@@ -79,7 +79,6 @@ d_sp_sum <- d %>%
                                    Commercial = c("commercial", "highly commercial"),
                                    Minor = c("minor commercial", "subsistence"),
                                    None = "none")) %>%
-  filter(commercial == "Commercial") %>% 
   arrange(-Sp_mean)
 
 

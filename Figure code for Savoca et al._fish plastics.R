@@ -50,8 +50,7 @@ d = read_csv("Plastics ingestion records fish master_final.csv") %>%
                                          adjacency == 0 ~ "oceanic")),
          source = as_factor(source),
          family = ifelse(family == "Gasterostediae", "Gasterosteidae", 
-                         ifelse(family == "Merluccidae", "Merlucciidae", family))) %>% 
-  rename(fam_phylo = "family")
+                         ifelse(family == "Merluccidae", "Merlucciidae", family))) 
 
 # total plastic FO
 sum(d$NwP, na.rm = TRUE)/ sum(d$N, na.rm = TRUE)            
@@ -63,6 +62,25 @@ d_full <- d %>%
 # total plastic FO
 sum(d_full$NwP, na.rm = TRUE)/ sum(d_full$N, na.rm = TRUE) 
 
+
+# species summary table
+d_sp_sum <- d %>%
+  filter(!species %in% c("sp.", "spp.","spp")) %>%
+  group_by(binomial, family, order, commercial, iucn_status) %>%
+  drop_na(binomial, family) %>% 
+  summarize(Sp_mean = mean(prop_w_plastic, na.rm = TRUE),
+            Sample_size = sum(N),
+            num_studies = n_distinct(source)) %>% 
+  ungroup %>% 
+  mutate(commercial = factor(commercial),
+         studies_cat = as.double(cut(num_studies, 
+                                     c(0, 1, 3, Inf),
+                                     c(1,2,3))),
+         commercial = fct_collapse(commercial,
+                                   Commercial = c("commercial", "highly commercial"),
+                                   Minor = c("minor commercial", "subsistence"),
+                                   None = "none")) %>%
+  arrange(-Sp_mean)
 
 
 #Code for figures ----
