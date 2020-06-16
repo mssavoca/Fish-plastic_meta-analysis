@@ -22,6 +22,7 @@ library(sjPlot)
 library(tibble)
 library(tidyr)
 library(ggeffects)
+library(ggpubr)
 
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
@@ -35,32 +36,38 @@ abbr_binom <- function(binom) {
 
 d_poll <- as_tibble(read_csv("Spatial Information_microplastics.csv"))
 
-d = read_csv("Plastics ingestion records fish master_final.csv") %>% 
+
+d = read_csv("Plastics ingestion records fish master_wEstuarine.csv") %>% 
   janitor::clean_names() %>% 
   rename(NwP = nw_p,
-         N = n) %>% 
+         N = n,
+         ProvCode = "oceanographic_province_from_longhurst_2007") %>% 
   mutate(WeightedProp = prop_w_plastic * N,
          Found = as_factor(case_when(habitat %in% c("demersal", "reef-associated", "benthopelagic", "bathydemersal") ~ "demersal",
                                      habitat %in% c("pelagic-neritic", "pelagic-oceanic", "mesopelagic", "bathypelagic") ~ "pelagic")),
-         prime_forage = na_if(prime_forage, "not listed")) %>% 
-  rename(ProvCode = "oceanographic_province_from_longhurst_2007") %>% 
+         prime_forage = na_if(prime_forage, "not listed"),
+         ProvCode = ifelse(ProvCode == "BPRL", "BPLR",
+                           ifelse(ProvCode == "HUMB", "CHIL",
+                                  ifelse(ProvCode == "NAST E", "NASE",
+                                         ifelse(ProvCode == "NPSE", "NPPF", ProvCode))))) %>% 
   separate(binomial, into = c("genus", "species"), sep = " ", remove = FALSE) %>% 
   left_join(dplyr::select(d_poll, c(ProvCode, adjacency, mean_poll_abund)), by = "ProvCode") %>% 
-  mutate(adjacency = as_factor(case_when(adjacency == 1 ~ "coastal",
+  mutate(method_type = factor(method_type),
+         adjacency = as_factor(case_when(adjacency == 1 ~ "coastal",
                                          adjacency == 0 ~ "oceanic")),
          source = as_factor(source),
          family = ifelse(family == "Gasterostediae", "Gasterosteidae", 
-                         ifelse(family == "Merluccidae", "Merlucciidae", family))) 
-
-# total plastic FO
-sum(d$NwP, na.rm = TRUE)/ sum(d$N, na.rm = TRUE)            
+                         ifelse(family == "Merluccidae", "Merlucciidae", family)),
+         adjacency_water = factor(ifelse(water_type == "estuarine", "estuarine", 
+                                         ifelse(adjacency == "coastal", "coastal", "oceanic"))))
+          
 
 #database for all data where microplastics were quantified
 d_full <- d %>%
+  #filter(method_type == 3) %>%  # Can TOGGLE in and out
   filter(includes_microplastic == "Y") 
 
-# total plastic FO
-sum(d_full$NwP, na.rm = TRUE)/ sum(d_full$N, na.rm = TRUE) 
+
 
 
 # species summary table
@@ -350,9 +357,9 @@ shapes <- c("None" = 15, "Minor" = 17, "Commercial" = 16)
 
 p %<+% d_family + 
   aes(color = FO_plastic) +
-  geom_tiplab2(aes(label = paste0("italic('", label, "')"),
-                   color=FO_plastic), parse = TRUE,
-               size = 6, align = FALSE, offset = 0.05) +
+  # geom_tiplab2(aes(label = paste0("italic('", label, "')"),
+  #                  color=FO_plastic), parse = TRUE,
+  #              size = 6, align = FALSE, offset = 0.05) +
   geom_tippoint(aes(color = FO_plastic, shape = commercial_cat, size = studies_cat)) +
   scale_color_gradientn(colours = c("steelblue4", "darkgoldenrod1", 
                                     "darkorange", "orangered2", "red3", "red4"), 
@@ -374,8 +381,8 @@ p %<+% d_family +
     #shape = guide_legend(override.aes = list(size = 5))
   )
 
-dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_new.pdf", width=20, height=20)
-ggsave("Fish_family_plastic_phylo_final_nolegend.jpg", width = 20, height = 20, units = "in")
+dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_SciAd.pdf", width=20, height=20)
+ggsave("Fish_family_plastic_phylo_final_nolegend_SciAd.jpg", width = 20, height = 20, units = "in")
 
 
 # Figure 2, S3-S5 ----
@@ -394,7 +401,7 @@ library(readxl)
 library(readr)
 library(ggplot2)
 
-data <- read.csv("Plastics ingestion records fish master_final.csv") 
+data <- read.csv("Plastics ingestion records fish master_wEstuarine.csv") 
 data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") # include this line if you're looking for studies that have to include microplastics
 
 # Here we want to get average proportion of plastic per province
@@ -403,6 +410,8 @@ data2 <- data[,c("Binomial", "Oceanographic.province..from.Longhurst.2007.", "Pr
 colnames(data2) <- c("Species", "OceanProv", "PropPlastic", "NwP", "N", "Source")
 data3<- data2[order(data2$OceanProv),]
 
+
+#****ASK ALEX ABOOUT THIS*****
 # We need our provinces to match the publicly available shape file, so we are renaming those that don't and then dropping the replaced factor levels
 levels(data3$OceanProv) <- c(levels(data3$OceanProv), "CHIL", "BPLR", "NASE", "NPPF") 
 data3$OceanProv[data3$OceanProv=="BPRL"] <- "BPLR"
@@ -509,14 +518,16 @@ write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Fig 2b)
 
 # Figure 2a was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the full dataset. Figure 2b was made by color coding from the subset of the data that included information on microplastics. The labels were assigned from the "labels" column. 
 
-# Figure 3 risk plot  ----
+# Figure 3 risk plot CHANGE TO 10 for "well-studied" from Markic  ---- 
+# ALSO DO A SUPPLEMENTAL FIG W MP & Method 2&3 only and 
+
 risk_plot <- d_sp_sum %>% 
   drop_na(commercial) %>% 
   ggplot(aes(log10(Sample_size), Sp_mean)) +
   geom_point(aes(color = Sp_mean, shape = commercial, size = studies_cat), 
              alpha = 0.8) +
   geom_hline(yintercept = 0.25, linetype="dashed", color = "grey50") +
-  geom_vline(xintercept = log10(25), linetype="dashed", color = "grey50") +
+  geom_vline(xintercept = log10(10), linetype="dashed", color = "grey50") +
   xlab("Log[Sample Size]") +
   ylab("Species-specific plastic ingestion incidence (FO)") +
   labs(shape = "Commercial status", shape = "Commercial Status", size =  "Number of studies") +
@@ -528,28 +539,32 @@ risk_plot <- d_sp_sum %>%
   scale_size_continuous(breaks = seq(from = 1, to = 3, by = 1), 
                         labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
                         range = c(1.5, 5)) +
-  annotate("text", x = c(0.4, 2.8, 0.4, 2.8),
-           y=c(0.8, 0.8, 0.08, 0.08),
+  annotate("text", x = c(0.4, 3.5, 0.4, 3.5),
+           y=c(0.8, 0.8, 0.075, 0.075),
            label = c("high incidence, data poor", "high incidence, data rich",
                      "low incidence, data poor", "low incidence, data rich")) +
   theme_classic(base_size = 16) +
   guides(shape = guide_legend(override.aes = list(size = 3)))
 risk_plot
 
-dev.copy2pdf(file="risk_plot.pdf", width=12, height=7)
+dev.copy2pdf(file="risk_plot_SciAd.pdf", width=12, height=7)
 
 
 # Figure 4, FO over time (2010-present), and species accumulation curves----
 FO_year_2010 <- d_full %>% 
   drop_na(N,prop_w_plastic, publication_year) %>% 
-  filter(publication_year >2009) 
+  filter(publication_year >2009, method_type == 3) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
+  mutate(commercial = fct_collapse(commercial,
+                            Commercial = c("commercial", "highly commercial"),
+                            Minor = c("minor commercial", "subsistence"),
+                            None = "none")) 
 
 FO_year_lm <- lm(prop_w_plastic~publication_year, weights = N, data = FO_year_2010)
 summary(FO_year_lm)
 
-ggplot(data = FO_year_2010, 
+FO_year <- ggplot(data = FO_year_2010, 
        aes(publication_year,prop_w_plastic, weight = N, size= N)) +
-  geom_point(aes(color = prop_w_plastic), alpha = 0.6) +
+  geom_point(aes(color = prop_w_plastic, shape = commercial), alpha = 0.6) +
   geom_smooth(method = "lm", show.legend = FALSE, size = 0.75, color = "black") +
   xlim(2009,2020) + 
   geom_hline(yintercept = 0.25, linetype="dashed", color = "grey50") +
@@ -559,6 +574,7 @@ ggplot(data = FO_year_2010,
                                     "firebrick1", "red3", "red4")) +
   scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
   scale_x_continuous(breaks=seq(2010, 2020, 1)) +
+  scale_shape_manual(na.translate = F, values = shapes) +
   labs(x = "Publication year",
        y = "Proportion with ingested plastic",
        size = "Sample size") +
@@ -568,7 +584,7 @@ ggplot(data = FO_year_2010,
         legend.text = element_text(size = 10))
 FO_year
 
-dev.copy2pdf(file="FO_by_year.pdf", width=8.5, height=8)
+dev.copy2pdf(file="FO_by_year_Method3.pdf", width=6.75, height=6)
 
 
 # average FO in 2019
@@ -585,7 +601,7 @@ cum_unique <- function(l) {
   }
   result
 }
-d_rarefaction_all <-  d_full %>% 
+d_rarefaction_all <-  d_full %>%  # REMEMBER THIS NOW INCLUDES METHOD TYPE
   group_by(publication_year) %>% 
   summarize(species = list(unique(binomial)),
             annual_N = sum(N, na.rm = TRUE)) %>% 
@@ -621,7 +637,7 @@ rarefaction_plot <- ggplot() +
   theme_classic(base_size = 16)
 rarefaction_plot
 
-dev.copy2pdf(file="rarefaction_plot.pdf", width=8, height=8)
+dev.copy2pdf(file="rarefaction_plot.pdf", width=6, height=6)
 
 
 
@@ -638,11 +654,53 @@ study_hist <- d %>%
   theme_classic(base_size = 18) +
   labs(fill = "Recorded microplastics?",
        x = "Publication year",
-       y = "Number of studies") 
+       y = "Number of studies") +
+theme(axis.title.x = element_blank())
 study_hist 
 
-dev.copy2pdf(file="studies_by_year.pdf", width=12, height=7)
 
+study_hist_MT <- d %>% 
+  group_by(publication_year, method_type) %>% 
+  summarize(n_studies = n_distinct(source)) %>% 
+  mutate(method_type = factor(method_type)) %>% 
+  ggplot(aes(publication_year, n_studies)) + 
+  geom_bar(aes(fill = method_type), stat = "identity") + 
+  scale_fill_manual(labels = c("1", "2", "3"), 
+                    values = c("darkslateblue",  "darkgoldenrod", "darkslategray")) +
+  geom_smooth(se = FALSE, color = "gray48") +
+  theme_classic(base_size = 18) +
+  labs(fill = "Method",
+       x = "Publication year",
+       y = "Number of studies") +
+  theme(axis.title.x = element_blank())
+study_hist_MT 
+
+dev.copy2pdf(file="studies_by_year_MT.pdf", width=12, height=7)
+
+study_hist_AW <- d %>% 
+  group_by(publication_year, adjacency_water) %>% 
+  summarize(n_studies = n_distinct(source)) %>% 
+  ggplot(aes(publication_year, n_studies)) + 
+  geom_bar(aes(fill = adjacency_water), stat = "identity") + 
+  scale_fill_manual(values = c( "burlywood4", "seagreen4", "dodgerblue4")) +
+  geom_smooth(se = FALSE, color = "gray25") +
+  theme_classic(base_size = 18) +
+  labs(fill = "Region",
+       x = "Publication year",
+       y = "Number of studies") 
+study_hist_AW 
+
+dev.copy2pdf(file="studies_by_year_AW.pdf", width=12, height=7)
+
+Study_hist_comb <- ggarrange(study_hist, study_hist_MT, study_hist_AW, 
+                                labels = c("A","B", "C"), 
+                             heights = c(1,1,1.1),
+                                font.label = list(size = 20),
+                                legend = "none",
+                                ncol = 1, nrow = 3)
+Study_hist_comb
+
+dev.copy2pdf(file="Study_hist_comb.pdf", width=6, height=10)
 
 
 # Figure S2, Species-level phylogeny ----
@@ -834,12 +892,13 @@ d_full_wo_gaps_TL <- d %>%
 glmm_FwP_eco_geo_TL <- glmer(cbind(NwP, N-NwP) ~ scale(trophic_level_via_fishbase) +
                                scale(average_depth) +
                                scale(mean_poll_abund) +
-                               Found + 
+                               Found + water_type +
                                adjacency + 
                                (1|order) + (1|source), 
                              na.action = "na.fail",
                              data = d_full_wo_gaps_TL, family = binomial)
 
+summary(glmm_FwP_eco_geo_TL)
 
 dat <- ggpredict(glmm_FwP_eco_geo_TL, terms = "trophic_level_via_fishbase")
 plot(dat) +
@@ -853,3 +912,66 @@ plot(dat) +
 dev.copy2pdf(file="TL_GLMM response.pdf", width=4.5, height=5)
 
 
+
+#### A couple extra plots;  THINK ABOUT THESE ---- 
+d_full %>% 
+  pull(average_depth) %>% 
+  quantile(c(0.025, 0.25, 0.5, 0.85, 0.90, 0.95, 0.99), na.rm = TRUE)
+
+
+
+Fig_3 <- ggplot(
+  filter(d_full, includes_microplastic == "Y", Found != "NA"), 
+                aes(average_depth, prop_w_plastic, size = N)) +
+  geom_point(aes(color = prop_w_plastic), alpha = 0.6) + 
+  geom_smooth(aes(weight = N), col = "gray 30", method = "loess", se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ Found, scales = "free_y", ncol = 1) +
+  coord_flip() +
+  scale_x_reverse() +
+  scale_color_gradientn(colours = c("steelblue4",
+                                    "darkgoldenrod1",
+                                    "darkorange", "orangered1",
+                                    "firebrick1", "red3", "red4"), 
+                        name = "Proportion with \ningested plastic") +
+  xlim(350,0) +
+  xlab("Average depth (m)") +
+  ylab("Proportion of individuals with ingested plastic") +
+  theme_classic(base_size = 16)
+Fig_3 + guides(size = FALSE, color = FALSE)
+
+dev.copy2pdf(file="Fig_AD_F.pdf", width=6, height=8)
+
+
+Fig_TL <- ggplot(
+  filter(d_full,  includes_microplastic == "Y"), 
+  aes(trophic_level_via_fishbase, prop_w_plastic, size = N)) +
+  geom_point(aes(color = prop_w_plastic), alpha = 0.4) + 
+  geom_smooth(aes(weight = N), col = "gray 48", method = "lm", se = TRUE) +
+  scale_color_gradientn(colours = c("steelblue4",
+                                    "darkgoldenrod1",
+                                    "darkorange", "orangered1",
+                                    "firebrick1", "red3", "red4"), 
+                        name = "Proportion with \ningested plastic") +
+  xlab("Trophic level") +
+  ylab("Proportion of individuals with ingested plastic") +
+  theme_classic(base_size = 16)
+
+Fig_TL + guides(size = FALSE, color = FALSE)
+
+dev.copy2pdf(file="Fig_TL.pdf", width=6, height=8)
+
+
+# Boxplots
+
+BP_MT <- ggplot(d_full, aes(x = method_type, y= prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N, weight = N))
+BP_MT
+
+BP_AW <- ggplot(filter(d_full, adjacency_water != "NA" & method_type != 1, Found != "NA" ),
+                aes(x = Found, y= prop_w_plastic)) +
+  facet_grid(adjacency_water~prime_forage) +
+  geom_boxplot() +
+  geom_point(aes(size = N, weight = N))
+BP_AW
