@@ -37,7 +37,7 @@ abbr_binom <- function(binom) {
 d_poll <- as_tibble(read_csv("Spatial Information_microplastics.csv"))
 
 
-d = read_csv("Plastics ingestion records fish master_wEstuarine.csv") %>% 
+d = read_csv("Plastics ingestion records fish master_final_SciAd.csv") %>% 
   janitor::clean_names() %>% 
   rename(NwP = nw_p,
          N = n,
@@ -58,9 +58,9 @@ d = read_csv("Plastics ingestion records fish master_wEstuarine.csv") %>%
          source = as_factor(source),
          family = ifelse(family == "Gasterostediae", "Gasterosteidae", 
                          ifelse(family == "Merluccidae", "Merlucciidae", family)),
-         adjacency_water = factor(ifelse(water_type == "estuarine", "estuarine", 
-                                         ifelse(adjacency == "coastal", "coastal", "oceanic"))))
-          
+         adjacency_water = as_factor(ifelse(water_type == "estuarine", "estuarine", 
+                                            ifelse(adjacency == "coastal", "coastal", "oceanic"))))
+
 
 #database for all data where microplastics were quantified
 d_full <- d %>%
@@ -350,7 +350,7 @@ p <- ggtree(my_tree, layout="circular", open.angle=90) +
   ggplot2::xlim(-0.6, 1.3) 
 p
 
-dev.copy2pdf(file="test_phylo.pdf", width=20, height=20)
+#dev.copy2pdf(file="test_phylo.pdf", width=20, height=20)
 
 # Adding data
 shapes <- c("None" = 15, "Minor" = 17, "Commercial" = 16)
@@ -540,7 +540,7 @@ risk_plot <- d_sp_sum %>%
                         labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
                         range = c(1.5, 5)) +
   annotate("text", x = c(0.4, 3.5, 0.4, 3.5),
-           y=c(0.8, 0.8, 0.075, 0.075),
+           y=c(0.8, 0.8, 0.0725, 0.0725),
            label = c("high incidence, data poor", "high incidence, data rich",
                      "low incidence, data poor", "low incidence, data rich")) +
   theme_classic(base_size = 16) +
@@ -550,7 +550,7 @@ risk_plot
 dev.copy2pdf(file="risk_plot_SciAd.pdf", width=12, height=7)
 
 
-# Figure 4, FO over time (2010-present), and species accumulation curves----
+# Figure 5, FO over time (2010-present), and species accumulation curves----
 FO_year_2010 <- d_full %>% 
   drop_na(N,prop_w_plastic, publication_year) %>% 
   filter(publication_year >2009, method_type == 3) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
@@ -567,7 +567,7 @@ FO_year <- ggplot(data = FO_year_2010,
   geom_point(aes(color = prop_w_plastic, shape = commercial), alpha = 0.6) +
   geom_smooth(method = "lm", show.legend = FALSE, size = 0.75, color = "black") +
   xlim(2009,2020) + 
-  geom_hline(yintercept = 0.25, linetype="dashed", color = "grey50") +
+  geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
   scale_color_gradientn(colours = c("steelblue4",
                                     "darkgoldenrod1",
                                     "darkorange", "orangered1",
@@ -701,6 +701,9 @@ Study_hist_comb <- ggarrange(study_hist, study_hist_MT, study_hist_AW,
 Study_hist_comb
 
 dev.copy2pdf(file="Study_hist_comb.pdf", width=6, height=10)
+
+
+
 
 
 # Figure S2, Species-level phylogeny ----

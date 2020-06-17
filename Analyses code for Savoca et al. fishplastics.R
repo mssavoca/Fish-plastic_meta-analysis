@@ -35,7 +35,7 @@ abbr_binom <- function(binom) {
 d_poll <- as_tibble(read_csv("Spatial Information_microplastics.csv"))
 
 
-d = read_csv("Plastics ingestion records fish master_wEstuarine.csv") %>% 
+d = read_csv("Plastics ingestion records fish master_final_SciAd.csv") %>% 
   janitor::clean_names() %>% 
   rename(NwP = nw_p,
          N = n,
@@ -56,10 +56,10 @@ d = read_csv("Plastics ingestion records fish master_wEstuarine.csv") %>%
          source = as_factor(source),
          family = ifelse(family == "Gasterostediae", "Gasterosteidae", 
                          ifelse(family == "Merluccidae", "Merlucciidae", family)),
-         adjacency_water = ifelse(water_type == "estuarine", "estuarine", 
-                                         ifelse(adjacency == "coastal", "coastal", "oceanic")))
+         adjacency_water = as_factor(ifelse(water_type == "estuarine", "estuarine", 
+                                            ifelse(adjacency == "coastal", "coastal", "oceanic"))))
 
-d %>% filter(adjacency_water == "estuarine") %>% summarize(tot = n_distinct(source))
+d %>% filter(adjacency_water == "oceanic") %>% summarize(tot = n_distinct(source))
 
 #database for all data where microplastics were quantified
 d_full <- d %>%
@@ -76,8 +76,8 @@ sum(d_full$NwP, na.rm = TRUE)/ sum(d_full$N, na.rm = TRUE)
 
 hist(d_full$mean_num_particles_per_indv, xlim = c(0,10), breaks = 10000)
 
-d %>% 
-  filter(average_depth >800) %>% 
+d_full %>% 
+  #filter(average_depth >800) %>% 
   #filter(mean_num_particles_per_indv >0) %>% 
   summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
             mean_num_plast = weighted.mean(mean_num_particles_per_indv, w = N, na.rm = TRUE),
@@ -91,12 +91,13 @@ d %>%
 # summary tables of raw data----
 
 # species summary table
-d_sp_sum <- d %>%
+d_sp_sum <- d_full %>%
   filter(!species %in% c("sp.", "spp.","spp")) %>%
   group_by(binomial, family, order, commercial, iucn_status) %>%
   drop_na(binomial, family) %>% 
   summarize(Sp_mean = mean(prop_w_plastic, na.rm = TRUE),
             Sample_size = sum(N, na.rm = TRUE),
+            #num_sp = n_distinct(binomial),
             num_studies = n_distinct(source)) %>% 
   ungroup %>% 
   mutate(commercial = factor(commercial),
@@ -107,7 +108,9 @@ d_sp_sum <- d %>%
                                    Commercial = c("commercial", "highly commercial"),
                                    Minor = c("minor commercial", "subsistence"),
                                    None = "none")) %>%
-  filter(Sample_size > 10, Sp_mean >0.25) %>%
+  # filter(num_sp > 2) %>% 
+  #filter(Sample_size >10, Sp_mean >= 0.25) %>%
+  #filter(commercial == "Commercial") %>%
   arrange(-Sp_mean)
 
 
@@ -131,7 +134,7 @@ conserve_fish <- d %>%
   summarize(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
             iucn = first(iucn_status),
             Sample_size = sum(N, na.rm = TRUE)) %>% 
-  #filter(Sample_size > 25) %>% 
+  filter(Sample_size > 9) %>% 
   arrange(-FO_plastic)
 
 # Supplementary Table S2
@@ -175,18 +178,18 @@ write_csv(concern_fish, "Concerning fish for humans.csv")
 
 # geographic summary of data
 Fish_geo_summ <- d %>% 
-  #filter(ProvCode %in% c("CHIN", "KURO", "SUND", "INDE")) %>%
+  filter(ProvCode %in% c("CHIN", "KURO", "SUND", "INDE")) %>%
   #filter(ProvCode %in% c("NASE", "NECS", "MEDI")) %>% 
   #filter(ProvCode == "BPLR") %>% 
-  group_by(ProvCode) %>% 
+  group_by() %>% 
   summarize(num_studies = n_distinct(source),
             num_sp = n_distinct(binomial),
             num_w_plast = sum(NwP, na.rm = TRUE),
             num_ind_studied = sum(N, na.rm = TRUE),
             prop_by_region = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
             wgt_mean_plast_num = weighted.mean(mean_num_particles_per_indv, N),
-            se_plast_num = SE(mean_num_particles_per_indv)) 
-  #left_join(d_poll, by = "ProvCode")
+            se_plast_num = SE(mean_num_particles_per_indv)) %>% 
+  left_join(d_poll, by = "ProvCode")
 write_csv(Fish_geo_summ, "Fish_plastic geographic summary.csv")
 
 summary(lm(prop_by_region~mean_poll_abund, data = Fish_geo_summ))
@@ -194,14 +197,13 @@ summary(lm(prop_by_region~mean_poll_abund, data = Fish_geo_summ))
 # Modeling for fish-plastic ingestion meta-analysis paper----
 
 #GLMM with method type----
-FO_year_2010 <- d_full %>% 
-  drop_na(N,NwP, order, method_type) %>% 
-  filter(publication_year >2009) 
+FO_MT <- d_full %>% 
+  drop_na(N,NwP, order, method_type) 
 
 glmm_FwP_MT <- glmer(cbind(NwP, N-NwP) ~ method_type +
                        (1|order) + (1|source), 
                      na.action = "na.fail",
-                     data = FO_year_2010, family = binomial)
+                     data = FO_MT, family = binomial)
 summary(glmm_FwP_MT)
 r.squaredGLMM(glmm_FwP_MT) 
 
@@ -211,10 +213,11 @@ d_full_wo_gaps_PF <- d %>%
   filter(includes_microplastic == "Y") %>% 
   #filter(method_type == 3) %>%  # Can TOGGLE in and out
   mutate(prime_forage = ifelse(prime_forage == "Benthic foraging", "aaBenthic foraging", prime_forage)) %>% 
-  drop_na(NwP, N, prime_forage)
+  drop_na(NwP, N, prime_forage) %>% 
+  filter(prime_forage != "Scavenging")
 
 glmm_FwP_PF <- glmer(cbind(NwP, N-NwP) ~ prime_forage + 
-                               (1|order) + (1|source)  + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                              na.action = "na.fail",
                              data = d_full_wo_gaps_PF, 
                              family = binomial)
@@ -259,14 +262,14 @@ d_full %>%
   quantile(c(0.025, 0.25, 0.5, 0.75, 0.89, 0.95, 0.99), na.rm = TRUE)
 
 d_full_wo_gaps_AD_F <- d %>%
-  filter(includes_microplastic == "Y") %>% 
-  #filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(includes_microplastic == "Y") %>% 
+  filter(method_type == 3) %>%  # Can TOGGLE in and out
   #filter(average_depth < 1500) %>%  # Can TOGGLE in and out 
   drop_na(average_depth, Found, NwP, N)
 
 glmm_FwP_AD_F <- glmer(cbind(NwP, N-NwP) ~ 
                                scale(average_depth)*Found + 
-                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                              na.action = "na.fail",
                              data = d_full_wo_gaps_AD_F, 
                              family = binomial)
@@ -276,14 +279,14 @@ r.squaredGLMM(glmm_FwP_AD_F)
 
 
 d_full_wo_gaps_poll <- d %>%
-  filter(includes_microplastic == "Y") %>% 
-  #filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(includes_microplastic == "Y") %>% 
+  filter(method_type == 3) %>%  # Can TOGGLE in and out
   filter(adjacency_water != "estuarine") %>%
   drop_na(Found, NwP, N, mean_poll_abund)
 
 glmm_FwP_poll  <- glmer(cbind(NwP, N-NwP) ~ 
                           scale(mean_poll_abund) +  #Maybe do separately WITHOUT estuarine
-                               (1|order) + (1|source)  + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                              na.action = "na.fail",
                              data = d_full_wo_gaps_poll, 
                              family = binomial)
@@ -301,7 +304,7 @@ d_full_wo_gaps_AW <- d %>%
 
 glmm_FwP_AW  <- glmer(cbind(NwP, N-NwP) ~ 
                         adjacency_water +  #Maybe do separately WITHOUT estuarine
-                          (1|order) + (1|source)  + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                          (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                         na.action = "na.fail",
                         data = d_full_wo_gaps_AW, 
                         family = binomial)
@@ -312,8 +315,8 @@ r.squaredGLMM(glmm_FwP_AW)
 
 #GLMM with trophic level----
 d_full_wo_gaps_TL <- d %>%
-  filter(includes_microplastic == "Y") %>% 
-  #filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(includes_microplastic == "Y") %>% 
+  filter(method_type == 3) %>%  # Can TOGGLE in and out
   drop_na(NwP, N, trophic_level_via_fishbase)
 
 
