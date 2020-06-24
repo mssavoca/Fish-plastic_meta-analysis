@@ -25,7 +25,7 @@ library(ggeffects)
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
 
-# Abbreviate a binomial e.g. Balaenoptera musculus -> B. musculus
+# Abbreviate a binomial e.g. Gadus morhua -> G. morhua
 abbr_binom <- function(binom) {
   paste(str_sub(binom, 1, 1), 
         str_extract(binom, " .*"), 
@@ -59,7 +59,10 @@ d = read_csv("Plastics ingestion records fish master_final_SciAd.csv") %>%
          adjacency_water = as_factor(ifelse(water_type == "estuarine", "estuarine", 
                                             ifelse(adjacency == "coastal", "coastal", "oceanic"))))
 
-d %>% filter(adjacency_water == "oceanic") %>% summarize(tot = n_distinct(source))
+d %>% filter(adjacency_water == "estuarine") %>% summarize(tot = n_distinct(source))
+  
+  
+#  publication_year > 2009, method_type != 1
 
 #database for all data where microplastics were quantified
 d_full <- d %>%
@@ -68,11 +71,14 @@ d_full <- d %>%
 
 
 # total plastic FO, ALL DATA
-sum(d$NwP, na.rm = TRUE)/ sum(d$N, na.rm = TRUE)  
+sum(d$NwP, na.rm = TRUE)/ sum(d$N, na.rm = TRUE)
+
+SE(d$prop_w_plastic)
 
 # total plastic FO, MP ONLY DATA
 sum(d_full$NwP, na.rm = TRUE)/ sum(d_full$N, na.rm = TRUE) 
 
+SE(d_full$prop_w_plastic)
 
 hist(d_full$mean_num_particles_per_indv, xlim = c(0,10), breaks = 10000)
 
@@ -137,9 +143,8 @@ conserve_fish <- d %>%
   filter(Sample_size > 9) %>% 
   arrange(-FO_plastic)
 
-# Supplementary Table S2
+# Supplementary Table S2 ----
 d_vulnerability <- d_full %>%
-  #  filter(family %in% c("Scombridae", "Sphyrnidae", "Carcharhinidae")) %>% 
   drop_na(vulnerability_score_via_fishbase_from_cheug_et_al_2005) %>% 
   mutate(Vulnerability.category = cut(vulnerability_score_via_fishbase_from_cheug_et_al_2005,
                                       breaks=c(-Inf, 20, 40, 60, 80, Inf), 
@@ -159,7 +164,7 @@ d_vulnerability <- d_full %>%
 
 write_csv(d_vulnerability, "Vulnerability table.csv")
 
-# Supplementary Table S3, fish of concern for humans
+# Supplementary Table S3, fish of concern for humans ----
 concern_fish <- d %>% 
   group_by(common_name, binomial, family) %>% 
   filter(commercial %in% c("commercial", "highly commercial")) %>%
@@ -171,17 +176,20 @@ concern_fish <- d %>%
             AC_status = first(aquaculture), 
             rec_status = first(recreational)) %>% 
   ungroup %>% 
-  filter(species_avg > 0.25 & sample_size > 10) %>% 
+  filter(species_avg > 0.25 & sample_size >= 10) %>% 
   arrange(-species_avg)
 write_csv(concern_fish, "Concerning fish for humans.csv")
 
 
 # geographic summary of data
 Fish_geo_summ <- d %>% 
-  filter(ProvCode %in% c("CHIN", "KURO", "SUND", "INDE")) %>%
+  #filter(ProvCode %in% c("CHIN", "KURO", "SUND", "INDE")) %>%
   #filter(ProvCode %in% c("NASE", "NECS", "MEDI")) %>% 
   #filter(ProvCode == "BPLR") %>% 
-  group_by() %>% 
+  filter(water_type != "estuarine") %>% 
+  filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(includes_microplastic == "Y") %>% 
+  group_by(ProvCode) %>% 
   summarize(num_studies = n_distinct(source),
             num_sp = n_distinct(binomial),
             num_w_plast = sum(NwP, na.rm = TRUE),
@@ -225,68 +233,51 @@ summary(glmm_FwP_PF)
 r.squaredGLMM(glmm_FwP_PF)
 
 
-# plot random effects WOW
-plot_model(glmm_FwP_eco_geo_PF, type = "eff"),
-grid = TRUE, 
-sort.est = "sort.all")[[2]] +
-  ggtitle("") +
-  xlab("Reference") +
-  ylab("Random intercept") +
-  #ylim(0.1,10) +
-  theme_bw() +
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.text.x = element_text(size = 16),
-        axis.title.x = element_text(size = 18),
-        axis.title.y = element_text(size = 18)) +
-  geom_hline(yintercept = 1)
-
-dev.copy2pdf(file="Random effect of source_GLMM.pdf", width=7, height=11)
-
-plot_model(glmm_FwP_eco_geo_PF, type = "re",
-           grid = FALSE, 
-           sort.est = "sort.all")[[2]] +
-  ggtitle("") +
-  xlab("Order") +
-  ylab("Random intercept") +
-  #ylim(0.1,10) +
-  theme_bw(base_size = 20) +
-  theme(plot.title = element_text(hjust = 0.5)) +
-  geom_hline(yintercept = 1)
-
-dev.copy2pdf(file="Random effect of order_GLMM.pdf", width=7, height=11)
-
-
 
 d_full %>% 
   pull(average_depth) %>% 
   quantile(c(0.025, 0.25, 0.5, 0.75, 0.89, 0.95, 0.99), na.rm = TRUE)
 
 d_full_wo_gaps_AD_F <- d %>%
-  #filter(includes_microplastic == "Y") %>% 
-  filter(method_type == 3) %>%  # Can TOGGLE in and out
+  filter(includes_microplastic == "Y") %>% 
+  #filter(method_type == 3) %>%  # Can TOGGLE in and out
   #filter(average_depth < 1500) %>%  # Can TOGGLE in and out 
   drop_na(average_depth, Found, NwP, N)
 
 glmm_FwP_AD_F <- glmer(cbind(NwP, N-NwP) ~ 
                                scale(average_depth)*Found + 
-                               (1|order) + (1|source),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                              na.action = "na.fail",
                              data = d_full_wo_gaps_AD_F, 
                              family = binomial)
 summary(glmm_FwP_AD_F)
 r.squaredGLMM(glmm_FwP_AD_F)
 
+#DO AICc
+plot_model(glmm_FwP_AD_F, type = "re",
+           grid = FALSE, 
+           sort.est = "sort.all")[[2]] +
+  ggtitle("") +
+  #xlab("Order") +
+  ylab("Random intercept") +
+  #ylim(0.1,10) +
+  theme_bw(base_size = 20) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = 1)
+
+dev.copy2pdf(file="Random effect of order_GLMM.pdf", width=7, height=12)
+
 
 
 d_full_wo_gaps_poll <- d %>%
-  #filter(includes_microplastic == "Y") %>% 
-  filter(method_type == 3) %>%  # Can TOGGLE in and out
-  filter(adjacency_water != "estuarine") %>%
+  filter(includes_microplastic == "Y") %>% 
+  #filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(adjacency_water != "estuarine") %>%
   drop_na(Found, NwP, N, mean_poll_abund)
 
 glmm_FwP_poll  <- glmer(cbind(NwP, N-NwP) ~ 
                           scale(mean_poll_abund) +  #Maybe do separately WITHOUT estuarine
-                               (1|order) + (1|source),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
                              na.action = "na.fail",
                              data = d_full_wo_gaps_poll, 
                              family = binomial)
@@ -322,12 +313,12 @@ d_full_wo_gaps_TL <- d %>%
 
 # This is the ecological model, POSSIBLY LOOK INTO A GAM 
 glmm_FwP_TL <- glmer(cbind(NwP, N-NwP) ~ scale(trophic_level_via_fishbase) +
-                               (1|order) + (1|source),  # AICc with and without pub year; try with FAMILY or ORDER FAMILY AND ORDER CHANGES NUMBERS A LOT
+                               (1|order) + (1|source) + (1|method_type),  # AICc with and without pub year; try with FAMILY or ORDER FAMILY AND ORDER CHANGES NUMBERS A LOT
                              na.action = "na.fail",
                              data = d_full_wo_gaps_TL, 
                              family = binomial)
 summary(glmm_FwP_TL)
-r.squaredGLMM(glmm_FwP_eco_geo_TL)
+r.squaredGLMM(glmm_FwP_TL)
 
 
 
@@ -335,6 +326,7 @@ r.squaredGLMM(glmm_FwP_eco_geo_TL)
 Model_table <- model.sel(glmm_FwP_PF, glmm_FwP_AD_F, glmm_FwP_poll, 
                          glmm_FwP_AW, glmm_FwP_TL)
 View(Model_table)
+
 
 
 

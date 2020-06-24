@@ -518,9 +518,43 @@ write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Fig 2b)
 
 # Figure 2a was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the full dataset. Figure 2b was made by color coding from the subset of the data that included information on microplastics. The labels were assigned from the "labels" column. 
 
-# Figure 3 risk plot CHANGE TO 10 for "well-studied" from Markic  ---- 
-# ALSO DO A SUPPLEMENTAL FIG W MP & Method 2&3 only and 
 
+
+
+
+# Figure 3, plastic ingestion by depth and habitat
+d_full %>% 
+  pull(average_depth) %>% 
+  quantile(c(0.025, 0.25, 0.5, 0.85, 0.90, 0.95, 0.99), na.rm = TRUE)
+
+
+Fig_3 <- ggplot(
+  filter(d_full, includes_microplastic == "Y", Found != "NA"), 
+  aes(average_depth, prop_w_plastic, size = N)) +
+  geom_point(aes(color = prop_w_plastic), alpha = 0.6) + 
+  geom_smooth(aes(weight = N), col = "gray 30", method = "loess", se = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  facet_wrap(~ Found, scales = "free_y", ncol = 1) +
+  coord_flip() +
+  scale_x_reverse() +
+  scale_color_gradientn(colours = c("steelblue4",
+                                    "darkgoldenrod1",
+                                    "darkorange", "orangered1",
+                                    "firebrick1", "red3", "red4"), 
+                        name = "Proportion with \ningested plastic") +
+  xlim(350,0) +
+  xlab("Average depth (m)") +
+  ylab("Proportion of individuals with ingested plastic") +
+  theme_classic(base_size = 16)
+Fig_3 + guides(size = FALSE, color = FALSE)
+
+dev.copy2pdf(file="Fig_AD_F.pdf", width=6, height=8)
+
+
+
+
+
+# Figure 4 risk plot  ---- 
 risk_plot <- d_sp_sum %>% 
   drop_na(commercial) %>% 
   ggplot(aes(log10(Sample_size), Sp_mean)) +
@@ -601,7 +635,8 @@ cum_unique <- function(l) {
   }
   result
 }
-d_rarefaction_all <-  d_full %>%  # REMEMBER THIS NOW INCLUDES METHOD TYPE
+d_rarefaction_all <-  d_full %>%
+  filter(method_type == 3) %>%  # Can TOGGLE in and out
   group_by(publication_year) %>% 
   summarize(species = list(unique(binomial)),
             annual_N = sum(N, na.rm = TRUE)) %>% 
@@ -637,7 +672,7 @@ rarefaction_plot <- ggplot() +
   theme_classic(base_size = 16)
 rarefaction_plot
 
-dev.copy2pdf(file="rarefaction_plot.pdf", width=6, height=6)
+dev.copy2pdf(file="Supp_rarefaction_plot.pdf", width=6, height=6)
 
 
 
@@ -916,65 +951,5 @@ dev.copy2pdf(file="TL_GLMM response.pdf", width=4.5, height=5)
 
 
 
-#### A couple extra plots;  THINK ABOUT THESE ---- 
-d_full %>% 
-  pull(average_depth) %>% 
-  quantile(c(0.025, 0.25, 0.5, 0.85, 0.90, 0.95, 0.99), na.rm = TRUE)
 
 
-
-Fig_3 <- ggplot(
-  filter(d_full, includes_microplastic == "Y", Found != "NA"), 
-                aes(average_depth, prop_w_plastic, size = N)) +
-  geom_point(aes(color = prop_w_plastic), alpha = 0.6) + 
-  geom_smooth(aes(weight = N), col = "gray 30", method = "loess", se = TRUE) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  facet_wrap(~ Found, scales = "free_y", ncol = 1) +
-  coord_flip() +
-  scale_x_reverse() +
-  scale_color_gradientn(colours = c("steelblue4",
-                                    "darkgoldenrod1",
-                                    "darkorange", "orangered1",
-                                    "firebrick1", "red3", "red4"), 
-                        name = "Proportion with \ningested plastic") +
-  xlim(350,0) +
-  xlab("Average depth (m)") +
-  ylab("Proportion of individuals with ingested plastic") +
-  theme_classic(base_size = 16)
-Fig_3 + guides(size = FALSE, color = FALSE)
-
-dev.copy2pdf(file="Fig_AD_F.pdf", width=6, height=8)
-
-
-Fig_TL <- ggplot(
-  filter(d_full,  includes_microplastic == "Y"), 
-  aes(trophic_level_via_fishbase, prop_w_plastic, size = N)) +
-  geom_point(aes(color = prop_w_plastic), alpha = 0.4) + 
-  geom_smooth(aes(weight = N), col = "gray 48", method = "lm", se = TRUE) +
-  scale_color_gradientn(colours = c("steelblue4",
-                                    "darkgoldenrod1",
-                                    "darkorange", "orangered1",
-                                    "firebrick1", "red3", "red4"), 
-                        name = "Proportion with \ningested plastic") +
-  xlab("Trophic level") +
-  ylab("Proportion of individuals with ingested plastic") +
-  theme_classic(base_size = 16)
-
-Fig_TL + guides(size = FALSE, color = FALSE)
-
-dev.copy2pdf(file="Fig_TL.pdf", width=6, height=8)
-
-
-# Boxplots
-
-BP_MT <- ggplot(d_full, aes(x = method_type, y= prop_w_plastic)) +
-  geom_boxplot() +
-  geom_point(aes(size = N, weight = N))
-BP_MT
-
-BP_AW <- ggplot(filter(d_full, adjacency_water != "NA" & method_type != 1, Found != "NA" ),
-                aes(x = Found, y= prop_w_plastic)) +
-  facet_grid(adjacency_water~prime_forage) +
-  geom_boxplot() +
-  geom_point(aes(size = N, weight = N))
-BP_AW
