@@ -246,7 +246,7 @@ d_full_wo_gaps_AD_F <- d %>%
 
 glmm_FwP_AD_F <- glmer(cbind(NwP, N-NwP) ~ 
                                scale(average_depth)*Found + 
-                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                               (1|order) + (1|source) + (1|method_type),  
                              na.action = "na.fail",
                              data = d_full_wo_gaps_AD_F, 
                              family = binomial)
@@ -272,12 +272,12 @@ dev.copy2pdf(file="Random effect of order_GLMM.pdf", width=7, height=12)
 d_full_wo_gaps_poll <- d %>%
   filter(includes_microplastic == "Y") %>% 
   #filter(method_type == 3) %>%  # Can TOGGLE in and out
-  #filter(adjacency_water != "estuarine") %>%
+  filter(adjacency_water != "estuarine") %>%
   drop_na(Found, NwP, N, mean_poll_abund)
 
 glmm_FwP_poll  <- glmer(cbind(NwP, N-NwP) ~ 
-                          scale(mean_poll_abund) +  #Maybe do separately WITHOUT estuarine
-                               (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                          scale(mean_poll_abund) +  #Do separately WITHOUT estuarine
+                               (1|order) + (1|source) + (1|method_type), 
                              na.action = "na.fail",
                              data = d_full_wo_gaps_poll, 
                              family = binomial)
@@ -294,8 +294,8 @@ d_full_wo_gaps_AW <- d %>%
   drop_na(Found, adjacency_water, NwP, N)
 
 glmm_FwP_AW  <- glmer(cbind(NwP, N-NwP) ~ 
-                        adjacency_water +  #Maybe do separately WITHOUT estuarine
-                          (1|order) + (1|source) + (1|method_type),  # METHOD TYPE ADDED TO INCLUDE AS MUCH DATA AS POSSIBLE
+                        adjacency_water + 
+                          (1|order) + (1|source) + (1|method_type),  
                         na.action = "na.fail",
                         data = d_full_wo_gaps_AW, 
                         family = binomial)

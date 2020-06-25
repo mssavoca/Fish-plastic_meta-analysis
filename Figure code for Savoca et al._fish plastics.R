@@ -539,7 +539,7 @@ write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method
 #Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
 
 
-# Figure 3, plastic ingestion by depth and habitat
+# Figure 3, plastic ingestion by depth and habitat ----
 d_full %>% 
   pull(average_depth) %>% 
   quantile(c(0.025, 0.25, 0.5, 0.85, 0.90, 0.95, 0.99), na.rm = TRUE)
@@ -756,9 +756,121 @@ dev.copy2pdf(file="Study_hist_comb.pdf", width=6, height=10)
 
 
 
+# Figure S2.---- 
+  ##Reference code for Figure 2.
+
+# Figure S3.---- 
+  ##Reference code for Figure 2.
+
+# Figure S4. Mean plastic concentration per province ----
+# load packages and data
+library(sf)
+library(rgdal)
+library(raster)
+library(maptools)
+
+#note that to read in the shape file you need the full address (https://datacarpentry.org/r-raster-vector-geospatial/06-vector-open-shapefile-in-r/)
+
+lh_prov <- st_read("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/longhurst_v4_2010/Longhurst_world_v4_2010.shp") # read in the Longhurst province shape file (referenced in Figures 2 and S4)
+crs(lh_prov)
+lh_prov.2 <- fortify(lh_prov) #fortify makes this into a data frame object for ggplot2
+
+# We use this file to first assign adjacency values that will ultimately be used in the model: 1 for LH province touching major landmass (not islands), 0 for not touching major landmass
+
+lh_prov.2$adjacency <- ifelse(lh_prov.2$ProvCode=="ALSK"| lh_prov.2$ProvCode=="CCAL"|lh_prov.2$ProvCode=="CAMR"|lh_prov.2$ProvCode=="BERS"|lh_prov.2$ProvCode=="BPLR"|lh_prov.2$ProvCode=="CARB"|lh_prov.2$ProvCode=="CHIL"|lh_prov.2$ProvCode=="FKLD"|lh_prov.2$ProvCode=="BRAZ"|lh_prov.2$ProvCode=="APLR"|lh_prov.2$ProvCode=="EAFR"|lh_prov.2$ProvCode=="BENG"|lh_prov.2$ProvCode=="GUIN"|lh_prov.2$ProvCode=="NWCS"|lh_prov.2$ProvCode== "CNRY"|lh_prov.2$ProvCode=="MEDI"|lh_prov.2$ProvCode== "NECS"|lh_prov.2$ProvCode=="SARC"|lh_prov.2$ProvCode=="REDS"|lh_prov.2$ProvCode== "ARAB"|lh_prov.2$ProvCode== "INDW"|lh_prov.2$ProvCode== "INDE"|lh_prov.2$ProvCode== "AUSW"|lh_prov.2$ProvCode== "BERS"|lh_prov.2$ProvCode=="SUND"|lh_prov.2$ProvCode== "AUSE"|lh_prov.2$ProvCode== "KURO"|lh_prov.2$ProvCode== "CHIN"|lh_prov.2$ProvCode=="TASM"|lh_prov.2$ProvCode=="NEWZ"|lh_prov.2$ProvCode=="SPSG"|lh_prov.2$ProvCode== "ARCH", 1, 0)
+sum(lh_prov.2$adjacency)
+
+# to calculate average plastic concentration per region, we need to bring in open-access data from Van Sebille et al. 2015. Here we use the Van Sebille model of abundance, presented in the format of three .csvs: one with abundance, one with latitude, and one with longitude. 
+abund <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/vansebillemodel_abundance.csv")
+poll_lat <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/latitudes.csv", header = FALSE)
+poll_lon <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/longitudes.csv", stringsAsFactors = FALSE)
+
+#Creating new object for plastic rasters
+# clean up longitude values
+x_vals <- as.numeric(gsub("X", "", colnames(poll_lon))) #gsub = regular expression that will drop the X from in front of the numeric values in our x data
+x_vals[x_vals > 179]  = x_vals[x_vals > 179] - 360 #need to shift the view on the map, so essentially flip the map around the 180.
+# incorporating into raster object
+raster_obj <- list(z = as.matrix(abund)[, order(x_vals)], 
+                   x = x_vals, 
+                   y = as.numeric(poll_lat$V1))
+
+# Create a new raster() file
+poll_raster <- raster(x = raster_obj$z, # Matrix values of plastic
+                      
+                      # Defining endpoints of the raster
+                      xmn = min(raster_obj$x),
+                      xmx = max(raster_obj$x),
+                      ymn = min(raster_obj$y),
+                      ymx = max(raster_obj$y),
+                      
+                      # Setting coordinate reference system to be equivalent to longhurst
+                      crs = crs(lh_prov))
+# checking plot function
+plot(st_geometry(lh_prov), add = TRUE, fill = NULL)
+### Next step: bring out average attribute per polygon
+extracted_vals <- extract(poll_raster, lh_prov) #this extracts values in the poll_raster per polygon
+str(extracted_vals) #this should give us a list of all of the values in each of 54 different LH objects
+mean_poll_abund<- unlist(lapply(extracted_vals, mean, na.rm=T)) #this should give us the mean values for each of the 54 LH objects
+lapply(extracted_vals, range, na.rm=T) #note that these units are #/km^2
+
+fullmapdat<- cbind(lh_prov.2, mean_poll_abund) #pairing each province with the appropriate mean pollution concentration values 
+
+### need to bin these vals for the map - values are AVERAGE #/km^2
+summary(mean_poll_abund)
+fullmapdat$plasticbin <- rep(NA, length(fullmapdat$mean_poll_abund))
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1 & fullmapdat$mean_poll_abund <10]= "10e0"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=10 & fullmapdat$mean_poll_abund <100]= "10e1"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100 & fullmapdat$mean_poll_abund <1000]= "10e2"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1000 & fullmapdat$mean_poll_abund <10000]= "10e3"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=10000 & fullmapdat$mean_poll_abund <100000]= "10e4"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100000 & fullmapdat$mean_poll_abund <1000000]= "10e5"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100000 & fullmapdat$mean_poll_abund <1000000]= "10e6"
+fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1000000]= ">10e6"
+fullmapdat$plasticbin
+
+# now we make make sure this a dataframe, rather than a spatial object
+fullmap.df <- fortify(fullmapdat)
+fullmap.df <- st_drop_geometry(fullmap.df) #need to remove geometry in order to get an actual dataframe (zero spatial component)
+# to save this file as a .csv
+write.csv(fullmap.df, "Spatial Information_microplastics.csv")
+
+### This .csv file can then be imported into QGIS as a vector layer to generate color-coded maps (see instructions in code for Figure 2).
+
+# Figure S5----
+d_full_wo_gaps_AD_F <- d %>%
+  filter(includes_microplastic == "Y") %>% 
+  #filter(method_type == 3) %>%  # Can TOGGLE in and out
+  drop_na(average_depth, Found, NwP, N)
+
+glmm_FwP_AD_F <- glmer(cbind(NwP, N-NwP) ~ 
+                         scale(average_depth)*Found + 
+                         (1|order) + (1|source) + (1|method_type),  
+                       na.action = "na.fail",
+                       data = d_full_wo_gaps_AD_F, 
+                       family = binomial)
+summary(glmm_FwP_AD_F)
+r.squaredGLMM(glmm_FwP_AD_F)
 
 
-# Figure S2, Species-level phylogeny ----
+plot_model(glmm_FwP_AD_F, type = "re",
+           grid = FALSE, 
+           sort.est = "sort.all")[[2]] +  # Change between 1,2,3 to produce plots for each random effect
+  ggtitle("") +
+  #xlab("Order") +
+  ylab("Random intercept") +
+  #ylim(0.1,10) +
+  theme_bw(base_size = 20) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  geom_hline(yintercept = 1)
+
+dev.copy2pdf(file="Random effect of order_GLMM.pdf", width=7, height=12)
+
+
+
+
+
+
+# Possible supplemental figure: Species-level phylogeny ----
 
 # building the basic tree 
 
@@ -833,128 +945,6 @@ dev.copy2pdf(file="Fish_plastic_phylo_d_mp_subset.pdf", width=50, height=50)
 ggsave("Prelim_phylo_ggtree2.tiff", width = 42, height = 42, units = "in")
 ggsave("Prelim_phylo_ggtree2.eps", width = 45, height = 45, units = "in")
 ggsave("Fish_plastic_phylo_d_mp_subset_nolegend.pdf", width = 45, height = 45, units = "in")
-
-# Figure S2. Reference code for Figure 2.
-# Figure S3. Reference code for Figure 2.
-# Figure S4. Mean plastic concentration per province
-# load packages and data ----
-library(sf)
-library(rgdal)
-library(raster)
-library(maptools)
-
-#note that to read in the shape file you need the full address (https://datacarpentry.org/r-raster-vector-geospatial/06-vector-open-shapefile-in-r/)
-
-lh_prov <- st_read("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/longhurst_v4_2010/Longhurst_world_v4_2010.shp") # read in the Longhurst province shape file (referenced in Figures 2 and S4)
-crs(lh_prov)
-lh_prov.2 <- fortify(lh_prov) #fortify makes this into a data frame object for ggplot2
-
-# We use this file to first assign adjacency values that will ultimately be used in the model: 1 for LH province touching major landmass (not islands), 0 for not touching major landmass
-
-lh_prov.2$adjacency <- ifelse(lh_prov.2$ProvCode=="ALSK"| lh_prov.2$ProvCode=="CCAL"|lh_prov.2$ProvCode=="CAMR"|lh_prov.2$ProvCode=="BERS"|lh_prov.2$ProvCode=="BPLR"|lh_prov.2$ProvCode=="CARB"|lh_prov.2$ProvCode=="CHIL"|lh_prov.2$ProvCode=="FKLD"|lh_prov.2$ProvCode=="BRAZ"|lh_prov.2$ProvCode=="APLR"|lh_prov.2$ProvCode=="EAFR"|lh_prov.2$ProvCode=="BENG"|lh_prov.2$ProvCode=="GUIN"|lh_prov.2$ProvCode=="NWCS"|lh_prov.2$ProvCode== "CNRY"|lh_prov.2$ProvCode=="MEDI"|lh_prov.2$ProvCode== "NECS"|lh_prov.2$ProvCode=="SARC"|lh_prov.2$ProvCode=="REDS"|lh_prov.2$ProvCode== "ARAB"|lh_prov.2$ProvCode== "INDW"|lh_prov.2$ProvCode== "INDE"|lh_prov.2$ProvCode== "AUSW"|lh_prov.2$ProvCode== "BERS"|lh_prov.2$ProvCode=="SUND"|lh_prov.2$ProvCode== "AUSE"|lh_prov.2$ProvCode== "KURO"|lh_prov.2$ProvCode== "CHIN"|lh_prov.2$ProvCode=="TASM"|lh_prov.2$ProvCode=="NEWZ"|lh_prov.2$ProvCode=="SPSG"|lh_prov.2$ProvCode== "ARCH", 1, 0)
-sum(lh_prov.2$adjacency)
-
-# to calculate average plastic concentration per region, we need to bring in open-access data from Van Sebille et al. 2015. Here we use the Van Sebille model of abundance, presented in the format of three .csvs: one with abundance, one with latitude, and one with longitude. 
-abund <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/vansebillemodel_abundance.csv")
-poll_lat <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/latitudes.csv", header = FALSE)
-poll_lon <- read.csv("~/Box Sync/Microplastics/Fish-plastics-meta-analysis-code/Global pollution_map files/longitudes.csv", stringsAsFactors = FALSE)
-
-#Creating new object for plastic rasters
-# clean up longitude values
-x_vals <- as.numeric(gsub("X", "", colnames(poll_lon))) #gsub = regular expression that will drop the X from in front of the numeric values in our x data
-x_vals[x_vals > 179]  = x_vals[x_vals > 179] - 360 #need to shift the view on the map, so essentially flip the map around the 180.
-# incorporating into raster object
-raster_obj <- list(z = as.matrix(abund)[, order(x_vals)], 
-                   x = x_vals, 
-                   y = as.numeric(poll_lat$V1))
-
-# Create a new raster() file
-poll_raster <- raster(x = raster_obj$z, # Matrix values of plastic
-                      
-                      # Defining endpoints of the raster
-                      xmn = min(raster_obj$x),
-                      xmx = max(raster_obj$x),
-                      ymn = min(raster_obj$y),
-                      ymx = max(raster_obj$y),
-                      
-                      # Setting coordinate reference system to be equivalent to longhurst
-                      crs = crs(lh_prov))
-# checking plot function
-plot(st_geometry(lh_prov), add = TRUE, fill = NULL)
-### Next step: bring out average attribute per polygon
-extracted_vals <- extract(poll_raster, lh_prov) #this extracts values in the poll_raster per polygon
-str(extracted_vals) #this should give us a list of all of the values in each of 54 different LH objects
-mean_poll_abund<- unlist(lapply(extracted_vals, mean, na.rm=T)) #this should give us the mean values for each of the 54 LH objects
-lapply(extracted_vals, range, na.rm=T) #note that these units are #/km^2
-
-fullmapdat<- cbind(lh_prov.2, mean_poll_abund) #pairing each province with the appropriate mean pollution concentration values 
-
-### need to bin these vals for the map - values are AVERAGE #/km^2
-summary(mean_poll_abund)
-fullmapdat$plasticbin <- rep(NA, length(fullmapdat$mean_poll_abund))
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1 & fullmapdat$mean_poll_abund <10]= "10e0"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=10 & fullmapdat$mean_poll_abund <100]= "10e1"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100 & fullmapdat$mean_poll_abund <1000]= "10e2"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1000 & fullmapdat$mean_poll_abund <10000]= "10e3"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=10000 & fullmapdat$mean_poll_abund <100000]= "10e4"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100000 & fullmapdat$mean_poll_abund <1000000]= "10e5"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=100000 & fullmapdat$mean_poll_abund <1000000]= "10e6"
-fullmapdat$plasticbin[fullmapdat$mean_poll_abund >=1000000]= ">10e6"
-fullmapdat$plasticbin
-
-# now we make make sure this a dataframe, rather than a spatial object
-fullmap.df <- fortify(fullmapdat)
-fullmap.df <- st_drop_geometry(fullmap.df) #need to remove geometry in order to get an actual dataframe (zero spatial component)
-# to save this file as a .csv
-write.csv(fullmap.df, "Spatial Information_microplastics.csv")
-
-### This .csv file can then be imported into QGIS as a vector layer to generate color-coded maps (see instructions in code for Figure 2).
-
-# Figures S6 and S7----
-#Full GLMM with foraging behavior
-d_full_wo_gaps_PF <- d %>%
-  filter(includes_microplastic == "Y") %>% 
-  drop_na(average_depth, Found, NwP, N, prime_forage,
-          adjacency, mean_poll_abund, ProvCode) 
-
-glmm_FwP_eco_geo_PF <- glmer(cbind(NwP, N-NwP) ~ scale(average_depth) + 
-                               scale(mean_poll_abund) +
-                               prime_forage + Found + adjacency +
-                               (1|order) + (1|source), 
-                             na.action = "na.fail",
-                             data = d_full_wo_gaps_PF, family = binomial)
-summary(glmm_FwP_eco_geo_PF)
-r.squaredGLMM(glmm_FwP_eco_geo_PF)
-
-#Full GLMM with trophic level
-d_full_wo_gaps_TL <- d %>%
-  filter(includes_microplastic == "Y") %>% 
-  drop_na(average_depth, Found, trophic_level_via_fishbase, NwP, N, 
-          adjacency, mean_poll_abund, ProvCode) 
-
-
-
-glmm_FwP_eco_geo_TL <- glmer(cbind(NwP, N-NwP) ~ scale(trophic_level_via_fishbase) +
-                               scale(average_depth) +
-                               scale(mean_poll_abund) +
-                               Found + water_type +
-                               adjacency + 
-                               (1|order) + (1|source), 
-                             na.action = "na.fail",
-                             data = d_full_wo_gaps_TL, family = binomial)
-
-summary(glmm_FwP_eco_geo_TL)
-
-dat <- ggpredict(glmm_FwP_eco_geo_TL, terms = "trophic_level_via_fishbase")
-plot(dat) +
-  ggtitle("") +
-  xlab("Trophic level (scaled)") +
-  ylab("Plastic ingestion incidence") +
-  ylim(0.15,0.8) +
-  annotate("text", x = c(-2, 1), y= 0.18, 
-           label = c("planktivorous", "piscivorous"))
-
-dev.copy2pdf(file="TL_GLMM response.pdf", width=4.5, height=5)
 
 
 
