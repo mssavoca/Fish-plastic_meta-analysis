@@ -385,7 +385,7 @@ dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_SciAd.pdf", width=20
 ggsave("Fish_family_plastic_phylo_final_nolegend_SciAd.jpg", width = 20, height = 20, units = "in")
 
 
-# Figure 2 (code also for S2a,b - S3) ----
+# Figure 2 (code also for S2a,b and S3) ----
 ##Map depicting frequency of occurrence of plastic ingestion according to Longhurst province. 
 
 #Here we also show data preparation for most maps in this publication (Figures 2, S3 - S5). This code bins and organizes the data for use in QGIS. The resulting .csv was exported from R and imported into QGIS.  More detailed instructions on how to import .csv files into QGIS are listed at the end of this section. 
@@ -404,15 +404,15 @@ library(ggplot2)
 ### For all figures (2, S2a and S2b, S3)
 dat <- read.csv("/Users/test/Box Sync/Microplastics/Fish-plastic_meta-analysis/Plastics ingestion records fish master_final_SciAd.csv")
 # get rid of estuarine studies
-data <- dat[dat$Water.type=="marine",] # Use this full data set for Figure S2a
+data <- dat[dat$Water.type=="marine",] # Use this full data set for Figures S2a and S3
 nrow(dat)
 nrow(data)
 
-# Figure 2: include this line if you're looking for studies that have to include microplastics
+## Figure S2b: include this line if you're looking for studies that use Method 3
 data <- data %>% filter(Method.type==3) 
 ###################
 
-### Figure S2b ###
+### Figure 2 ###
 # include this line if you're looking for studies that have to include microplastics
 data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") 
 
@@ -521,11 +521,11 @@ newdat$normbin[newdat$normalized >1500]= ">1500"
 newdat$labels <- paste(newdat$prov, " (n=",newdat$numfish,")", sep = "")
 
 # Write the data into a .csv file with all of the organized, binned variables.
-#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_updated.csv") #(Map w/ all data)
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_updated.csv") #(Map w/ all data; Fig S2A)
 
 # if have run this 
-#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Map w/ Microplastics only)
-write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method 3 only)
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Map w/ Microplastics only; Fig 2)
+write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method 3 only; Fig S2B)
 
 #### To bring this file into QGIS for mapping:
 # 1. Import as a vector layer;
@@ -534,7 +534,7 @@ write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method
 
 # Figure 2 was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the microplastic only data. The labels were assigned from the "labels" column. 
 
-#Figure S2 was made from a) the full dataset, and b) by subsetting the data according to method. The labels were assigned from the "labels" column. 
+#Figure S2 was made from a) the full dataset, and b) by subsetting the data to studies that used method 3. The labels were assigned from the "labels" column. 
 
 #Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
 
