@@ -385,7 +385,7 @@ dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_SciAd.pdf", width=20
 ggsave("Fish_family_plastic_phylo_final_nolegend_SciAd.jpg", width = 20, height = 20, units = "in")
 
 
-# Figure 2, S3-S5 ----
+# Figure 2 (code also for S2a,b - S3) ----
 ##Map depicting frequency of occurrence of plastic ingestion according to Longhurst province. 
 
 #Here we also show data preparation for most maps in this publication (Figures 2, S3 - S5). This code bins and organizes the data for use in QGIS. The resulting .csv was exported from R and imported into QGIS.  More detailed instructions on how to import .csv files into QGIS are listed at the end of this section. 
@@ -401,8 +401,22 @@ library(readxl)
 library(readr)
 library(ggplot2)
 
-data <- read.csv("Plastics ingestion records fish master_wEstuarine.csv") 
-data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") # include this line if you're looking for studies that have to include microplastics
+### For all figures (2, S2a and S2b, S3)
+dat <- read.csv("/Users/test/Box Sync/Microplastics/Fish-plastic_meta-analysis/Plastics ingestion records fish master_final_SciAd.csv")
+# get rid of estuarine studies
+data <- dat[dat$Water.type=="marine",] # Use this full data set for Figure S2a
+nrow(dat)
+nrow(data)
+
+# Figure 2: include this line if you're looking for studies that have to include microplastics
+data <- data %>% filter(Method.type==3) 
+###################
+
+### Figure S2b ###
+# include this line if you're looking for studies that have to include microplastics
+data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") 
+
+
 
 # Here we want to get average proportion of plastic per province
 # data of interest is:
@@ -410,8 +424,6 @@ data2 <- data[,c("Binomial", "Oceanographic.province..from.Longhurst.2007.", "Pr
 colnames(data2) <- c("Species", "OceanProv", "PropPlastic", "NwP", "N", "Source")
 data3<- data2[order(data2$OceanProv),]
 
-
-#****ASK ALEX ABOOUT THIS*****
 # We need our provinces to match the publicly available shape file, so we are renaming those that don't and then dropping the replaced factor levels
 levels(data3$OceanProv) <- c(levels(data3$OceanProv), "CHIL", "BPLR", "NASE", "NPPF") 
 data3$OceanProv[data3$OceanProv=="BPRL"] <- "BPLR"
@@ -485,7 +497,7 @@ newdat$numstudiesbin[newdat$numstudies >=10]= ">10"
 # number of fish/study
 summary(newdat$numfish)
 newdat$numfishbin <- rep(NA, length(prov))
-newdat$numfishbin[newdat$numfish >1 & newdat$numfish<10]= "< 10"
+newdat$numfishbin[newdat$numfish >=1 & newdat$numfish<10]= "< 10"
 newdat$numfishbin[newdat$numfish >=10 & newdat$numfish<=50]= "10-50"
 newdat$numfishbin[newdat$numfish >50 & newdat$numfish<=100]= "51-100"
 newdat$numfishbin[newdat$numfish >100 & newdat$numfish<500]= "101-500"
@@ -505,21 +517,26 @@ newdat$normbin[newdat$normalized >1000 & newdat$normalized<=1500]= "1001-1500"
 newdat$normbin[newdat$normalized >1500]= ">1500"
 
 
-# Add a column with labels so that we can just use these for Figure 2 when we create it in GIS
+# Add a column with labels so that we can just use these for Figures 2, S2-S3 when we create it in GIS
 newdat$labels <- paste(newdat$prov, " (n=",newdat$numfish,")", sep = "")
 
 # Write the data into a .csv file with all of the organized, binned variables.
-write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Fig 2b)
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_updated.csv") #(Map w/ all data)
+
+# if have run this 
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Map w/ Microplastics only)
+write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method 3 only)
 
 #### To bring this file into QGIS for mapping:
 # 1. Import as a vector layer;
 # 2. Join this layer by province code with the shape file for the Longhurst provinces that can be downloaded from here: http://www.marineregions.org/downloads.php#longhurst.
 # 3. Adjust colors, labels, and variables using the "Properties" menu in QGIS.
 
-# Figure 2a was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the full dataset. Figure 2b was made by color coding from the subset of the data that included information on microplastics. The labels were assigned from the "labels" column. 
+# Figure 2 was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the microplastic only data. The labels were assigned from the "labels" column. 
 
+#Figure S2 was made from a) the full dataset, and b) by subsetting the data according to method. The labels were assigned from the "labels" column. 
 
-
+#Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
 
 
 # Figure 3, plastic ingestion by depth and habitat
@@ -817,19 +834,9 @@ ggsave("Prelim_phylo_ggtree2.tiff", width = 42, height = 42, units = "in")
 ggsave("Prelim_phylo_ggtree2.eps", width = 45, height = 45, units = "in")
 ggsave("Fish_plastic_phylo_d_mp_subset_nolegend.pdf", width = 45, height = 45, units = "in")
 
-
-# Figure S3. Map showing the frequency of occurrence of plastic ingestion using the full dataset.
-# Repeat code and QGIS import procedure for Figure 2. However, instead of filtering for studies pertaining to microplastics, omit this line: 
-#data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?")
-# and save your .csv using this line
-write.csv(newdat, "Longhurst_FishSummaryData_fullbinned.csv") 
-
-#This .csv can be added as an additional vector layer to your shape file and the microplastic-only dataset in QGIS. It can then be color-coded according to the instructions in this code listed for Figure 2. 
-
-# Figure S4. Map showing number of studies on plastic ingestion in fish
-# See code for Figure 2. Here, the same dataset from Fig 2 was imported as a vector layer in QGIS and joined to the Longhurst province shape file. The shape file was then color-coded according to the "numstudiesbin" column.  
-
-# Figure S5. Mean plastic concentration per province
+# Figure S2. Reference code for Figure 2.
+# Figure S3. Reference code for Figure 2.
+# Figure S4. Mean plastic concentration per province
 # load packages and data ----
 library(sf)
 library(rgdal)
