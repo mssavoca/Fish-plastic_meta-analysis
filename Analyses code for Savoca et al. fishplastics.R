@@ -22,6 +22,10 @@ library(tibble)
 library(tidyr)
 library(ggeffects)
 
+#for BRTs
+library(dismo)
+library(gbm)
+
 SE = function(x){sd(x, na.rm = TRUE)/sqrt(sum(!is.na(x)))}
 
 
@@ -232,6 +236,11 @@ glmm_FwP_PF <- glmer(cbind(NwP, N-NwP) ~ prime_forage +
 summary(glmm_FwP_PF)
 r.squaredGLMM(glmm_FwP_PF)
 
+###BRT code
+try(BRT_FwP_PF<-gbm.fixed(data=d_full_wo_gaps_PF,gbm.x=c("prime_forage","order","source","method_type"), gbm.y=cbind(NwP, N-NwP), family="binomial",tree.complexity=5, learning.rate = 0.005, n.trees = 2000, bag.fraction=0.75))
+gbm.plot(BRT_FwP_PF, write.title = FALSE)
+#quartz(); gbm.plot.fits(BRT_FwP_PF)
+summary(BRT_FwP_PF)
 
 
 d_full %>% 
