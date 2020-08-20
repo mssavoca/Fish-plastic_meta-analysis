@@ -93,287 +93,8 @@ d_sp_sum <- d %>%
 
 #Code for figures ----
 
-# Figure 1A
 
-# Figure 1, ORDER phylogeny----
-
-d_order <- d_full %>% 
-  group_by(order) %>% 
-  summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
-            mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
-            sample_size = sum(N, na.rm = TRUE),
-            num_sp = n_distinct(binomial),
-            num_studies = n_distinct(source),
-            prop_commercial = sum(commercial %in% c("commercial", "highly commercial"))/n()) %>% 
-  drop_na(order) %>% 
-  mutate(studies_cat = as.double(cut(num_studies, 
-                                     c(0, 1, 3, Inf),
-                                     c(1,2,3))),
-         commercial_cat = cut(prop_commercial,
-                              breaks=c(-Inf, 0.01, 0.25, Inf), 
-                              labels=c("None", "Minor", "Commercial"))) %>% 
-  filter(FO_plastic >0.25, sample_size >9, num_sp > 2) %>% 
-  arrange(desc(FO_plastic))
-
-
-d_order <- d_full %>% 
-  group_by(order) %>% 
-  summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
-            mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
-            sample_size = sum(N, na.rm = TRUE),
-            num_studies = n_distinct(source),
-            prop_commercial = sum(commercial %in% c("commercial", "highly commercial"))/n()) %>% 
-  drop_na(order) %>% 
-  mutate(studies_cat = as.double(cut(num_studies, 
-                                     c(0, 1, 3, Inf),
-                                     c(1,2,3))),
-         commercial_cat = cut(prop_commercial,
-                              breaks=c(-Inf, 0.01, 0.25, Inf), 
-                              labels=c("None", "Minor", "Commercial"))) %>% 
-  arrange(desc(FO_plastic))
-
-# adding
-taxon_search <- tnrs_match_names(names = d_order$order, context_name = "All life")
-ott_in_tree <- ott_id(taxon_search)[is_in_tree(ott_id(taxon_search))]
-node_in_tree <- node_id(taxon_search)[is_in_tree(node_id(taxon_search))]
-d_order$ott_name <- unique_name(taxon_search)
-d_order$ott_id <- taxon_search$ott_id
-
-
-
-#plots ORDERS
-my_tree <- tol_induced_subtree(ott_ids = c(d_order$ott_id),
-                               label_format = "name")
-
-my_tree$tip.label[my_tree$tip.label == "mrcaott17080ott19944"] <- "Carcharhiniformes"
-my_tree$tip.label[my_tree$tip.label == "Pristiformes/Rhiniformes_group"] <- "Squaliformes"
-my_tree$tip.label[my_tree$tip.label == "Carangaria"] <- "Perciformes"
-my_tree$tip.label[my_tree$tip.label == "Gasterosteales"] <- "Trachiniformes"
-my_tree$tip.label[my_tree$tip.label == "mrcaott13841ott64982"] <- "Anguilliformes"
-
-
-
-# LOOK INTO adding Scombriformes for Tuna !!!
-
-a = as_tibble(my_tree)
-
-my_tree <- compute.brlen(my_tree, method = "Grafen", power = 1/2) #add branch lengths to my tree using the Grafen (1989) method
-my_tree <- ladderize(my_tree, right = TRUE)
-
-#add.species.to.genus(my_tree, "Alepisauridae_Synodontidae", where = "root")
-
-# adding familes to taxa manually 
-
-node.tree<-function(tree, m = 0, prefix = "NodE"){
-  res <- list(call = match.call())
-  res$m.start <- m
-  if(is.null(tree$node.label)){
-    tree <- ape::makeNodeLabel(tree)
-    tree$node.label <- rep("", tree$Nnode)
-  }
-  for(i in 1:tree$Nnode){
-    if(tree$node.label[i] == "NA" | tree$node.label[i] == ""){
-      m <- m+1
-      tree$node.label[i] <- paste(prefix, m, sep = "")
-    }
-  }
-  res$m.current <- m
-  res$prefix <- prefix
-  res$tree <- tree
-  return(res)
-}
-tree.label.info <- function(tree, label){
-  if(is.null(tree$edge.length) | any(is.na(tree$edge.length))){
-    stop("\n tree$edge.length with any NA or NULL\n")
-  }
-  if(is.null(tree$tip.label) | is.null(tree$node.label)){
-    stop("\n tree$tip.label and/or tree$node.label NULL\n")
-  }
-  n <- length(tree$tip.label)
-  where <- which(c(tree$tip.label, tree$node.label) == label)
-  if(length(where)>1){
-    stop("\n Only one label accepted or label with multiple occurrences in tree\n")
-  }
-  if(length(where)!=1){
-    stop("\n label not found\n")
-  }
-  H <- phytools::nodeHeights(tree)
-  HM <- max(H)
-  res <- data.frame(row.names = label)
-  if(where<=n){
-    res$edge <- which(tree$edge[,2] == where)
-    res$edge.length <- tree$edge.length[res$edge]
-    res$edge.height <- HM - H[res$edge, 2]
-    res$max.height <- HM
-    res$type <- "tip"
-  }else{
-    if (where == (length(tree$tip.label) + 1)){
-      res$edge<-which(tree$edge[,1] == where)[1]
-      res$edge.length <- 0
-      res$edge.height <- HM - H[res$edge, 1]
-      res$edge <- NA
-      res$max.height <- HM
-      res$type <- "root"
-    } else {
-      res$edge <- which(tree$edge[,2] == where)
-      res$edge.length <-tree$edge.length[res$edge]
-      res$edge.height <- HM - H[res$edge, 2]
-      res$max.height <- HM
-      res$type <- "node"
-    }
-  }
-  return(res)
-}
-add.taxa.phylo <- function(tree, taxa, m = 0, prefix = "NeWNodEPhylO"){
-  res <- list(call = match.call())
-  res$m.start <- m
-  if (!inherits(tree, "phylo")){ 
-    stop("\n Object tree is not of class phylo \n")
-  }
-  if(is.null(tree$node.label)){
-    stop("\n tree$node.label is NULL. Use the function node.tree\n")
-  }
-  tree.labels <- c(tree$tip.label, tree$node.label)
-  match.names <- match(taxa[,1], tree.labels)
-  if(any(is.na(match.names))){
-    print("Some nodes/tips in taxa are not present in tree$node.label/tree$tip.label:")
-    mNA <- is.na(match.names)
-    for(i in (1:nrow(taxa))[mNA]){
-      print(as.character(taxa[i, 1]))
-    }
-    stop("\n Check tree and/or taxa")
-  }
-  show.warning <- FALSE
-  for(i in 1:nrow(taxa)){
-    if(length(which(c(tree.labels) == taxa[i, 1]))>1){
-      stop(paste("\n The label", taxa[i,1], "with multiple occurrences in tree$node.label"))
-    }
-    info.temp <- tree.label.info(tree, taxa[i, 1])
-    if(!is.na(taxa[i,3]) & (info.temp$type == "node" | info.temp$type == "root")){
-      taxa[i,3] <- NA
-      show.warning <- TRUE
-    }
-    if(!is.na(taxa[i,3]) & info.temp$edge.length<taxa[i,3]){
-      stop(paste("\n The edge length to larger to tip", taxa[i,2]))
-    }
-  }
-  if(show.warning){
-    warning("\n Edge length not used in internal node anchor")
-  }
-  u.taxa <- unique(taxa[,1])
-  for(i in 1:length(u.taxa)){
-    if(length(unique(as.character(taxa[which(taxa[,1] == u.taxa[i]),3])))>1)
-      stop("\n Edge length in a sigle anchor tip must be equal")
-  }
-  edges.length <- as.numeric(taxa[, 3, drop = FALSE])
-  control<-matrix(NA, nrow(taxa), 2)
-  control[,1] <- taxa[,1]
-  for(i in 1:nrow(taxa)){
-    label <- taxa[i, 1]
-    if(length(which(label == tree$tip.label)) > 0){
-      control.temp<-control[which(control[,1] == label), 2]
-      if(all(is.na(control.temp))){
-        where <- which(tree$tip.label == label)
-        if(is.na(edges.length[i])){
-          edges.length[i] <- tree.label.info(tree, label)[1, 2]/2 #edge.length
-        }
-        tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = edges.length[i])
-      } else {
-        control.tips <- c(control.temp, label)
-        control.tips <- control.tips[!is.na(control.tips)]
-        node.name <- c(tree$tip.label, tree$node.label)[ape::getMRCA(tree, control.tips)]
-        where <- which(c(tree$tip.label, tree$node.label) == node.name)
-        tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = 0)
-      }
-      control[i, 2] <- taxa[i, 2]
-    } else {
-      where <- which(c(tree$tip.label, tree$node.label) == label)
-      tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = 0)
-    }
-    tree.temp <- node.tree(tree, m = m, prefix = prefix)
-    tree <- tree.temp$tree
-    m <- tree.temp$m.current
-  }
-  res$m.current <- m
-  res$prefix <- prefix
-  res$new.tips <- taxa[,2]
-  res$tree <- tree
-  return(res)
-}
-
-
-# 
-# my_tree <- add.taxa.phylo(my_tree, taxa)$tree
-# my_tree <- as.phylo(my_tree) 
-# 
-# a = as_tibble(my_tree)
-# 
-#THINGS TO ADD IN: Pleuronectiformes, Scorpaeniformes, Gasterosteiformes (Should be where "Trachiniformes" now is?)
-
-final_taxa <- matrix(c("Zeiformes", "Tetraodontiformes", "Perciformes",  # This row exists on phylogeny
-                       "Gasterosteiformes", "Pleuronectiformes", "Scorpaeniformes",   # These are tips to add on phylogeny
-                       NA, NA, NA),
-                     3,3)
-final_taxa
-
-my_tree <- add.taxa.phylo(my_tree, final_taxa)$tree
-my_tree <- as.phylo(my_tree)
-
-
-
-my_tree <- compute.brlen(my_tree, method = "Grafen", power = 1/2) #add branch lengths to my tree using the Grafen (1989) method
-my_tree <- ladderize(my_tree, right = TRUE)
-
-# first plot try, fan layout
-p <- ggtree(my_tree, layout="fan", open.angle=160) +
-  #geom_text2(aes(label=label), hjust=-.2, size=4) +
-  geom_tiplab2(parse = TRUE,
-               size = 9,offset = 0.05) +
-  ggplot2::xlim(-0.6, 1.3) 
-
-
-p <- rotate_tree(p, -12)
-p
-
-#dev.copy2pdf(file="test_phylo.pdf", width=20, height=20)
-
-# Adding data
-shapes <- c("None" = 15, "Minor" = 17, "Commercial" = 16)
-
-p %<+% d_order + 
-  aes(color = FO_plastic) +
-  geom_tippoint(aes(color = FO_plastic, shape = commercial_cat, size = studies_cat)) +
-  scale_color_gradientn(colours = c("steelblue4", "darkgoldenrod1", 
-                                    "darkorange", "orangered2", "red3", "red4"), 
-                        name = "Proportion with \ningested plastic") +
-  #scale_size(range = c(3, 7)) +
-  #scale_size_continuous(guide = FALSE, range = c(3, 7)) +
-  scale_size_continuous(breaks = seq(from = 1, to = 3, by = 1), 
-                        labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
-                        range = c(3, 10)) +
-  scale_shape_manual(na.translate = F, values = shapes) +
-  labs(shape = "Commercial \nstatus") +
-  theme(legend.position = c(0.49, 0.49),
-        legend.key.size = unit(1.25, "cm"),
-        legend.text = element_text(size = 18),
-        legend.title = element_text(size = 20),
-        legend.box = "horizontal") +
-  guides(
-    size = FALSE, shape = FALSE, color  = FALSE
-    #shape = guide_legend(override.aes = list(size = 5))
-  )
-
-
-
-dev.copy2pdf(file="Fish_order_plastic_phylo_final_nolegend_NEE.pdf", width=22, height=20)
-ggsave("Fish_order_plastic_phylo_final_nolegend_NEE.jpg", width = 20, height = 20, units = "in")
-
-
-
-
-
-
-# Figure 1 Extended, Family phylogeny----
+# Figure 1, Family phylogeny----
 
 d_family <- d_full %>% 
   group_by(family) %>% 
@@ -665,34 +386,6 @@ p %<+% d_family +
 dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_SciAd.pdf", width=20, height=20)
 ggsave("Fish_family_plastic_phylo_final_nolegend_SciAd.jpg", width = 20, height = 20, units = "in")
 
-
-# Figure 1B (code also for Extended 1B) ----
-##Map depicting frequency of occurrence of plastic ingestion according to Longhurst province. 
-
-#Here we also show data preparation for most maps in this publication (Figures 2, S3 - S5). This code bins and organizes the data for use in QGIS. The resulting .csv was exported from R and imported into QGIS.  More detailed instructions on how to import .csv files into QGIS are listed at the end of this section. 
-
-# load packages and data
-library(tidyverse)
-library(gbm)
-library(dismo)
-library(mgcv)
-library(lme4)
-library(gamm4)
-library(readxl)
-library(readr)
-library(ggplot2)
-
-### For all figures (2, S2a and S2b, S3)
-dat <- read.csv("/Users/test/Box Sync/Microplastics/Fish-plastic_meta-analysis/Plastics ingestion records fish master_final_SciAd.csv")
-# get rid of estuarine studies
-data <- dat[dat$Water.type=="marine",] # Use this full data set for Figures S2a and S3
-nrow(dat)
-nrow(data)
-
-## Figure S2b: include this line if you're looking for studies that use Method 3
-data <- data %>% filter(Method.type==3) 
-###################
-
 ### Figure 2 ###
 # include this line if you're looking for studies that have to include microplastics
 data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") 
@@ -820,8 +513,7 @@ write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method
 #Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
 
 
-
-# Figure 2A and B, risk plot  ---- 
+# Figure 3, risk plot  ---- 
 risk_plot <- d_sp_sum %>% 
   drop_na(commercial) %>% 
   ggplot(aes(log10(Sample_size), Sp_mean)) +
@@ -841,10 +533,10 @@ risk_plot <- d_sp_sum %>%
   scale_size_continuous(breaks = seq(from = 1, to = 3, by = 1), 
                         labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
                         range = c(1.5, 5)) +
-  annotate("text", x = c(0.4, 3, 0.4, 3),
-           y=c(0.75, 0.75, 0.1, 0.1),
-           label = c("high incidence, data poor", "high incidence, data rich",
-                     "low incidence, data poor", "low incidence, data rich")) +
+  # annotate("text", x = c(0.4, 3, 0.4, 3),
+  #          y=c(0.75, 0.75, 0.1, 0.1),
+  #          label = c("high incidence, data poor", "high incidence, data rich",
+  #                    "low incidence, data poor", "low incidence, data rich")) +
   theme_classic(base_size = 16) +
   guides(shape = guide_legend(override.aes = list(size = 3)))
 risk_plot
@@ -852,7 +544,7 @@ risk_plot
 dev.copy2pdf(file="risk_plot_NEE_1972_2015.pdf", width=10.25, height=7)
 
 
-# Figure 2C, FO over time (2010-present)----
+# Figure 4A, FO over time (2010-present)----
 FO_year_2010 <- d_full %>% 
   drop_na(N,prop_w_plastic, publication_year) %>% 
   filter(publication_year >2009, method_type == 3) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
@@ -894,7 +586,7 @@ FO_year_2019 <- FO_year_2010 %>% filter(publication_year == 2019)
 weighted.mean(FO_year_2019$prop_w_plastic, w = FO_year_2019$N)
 
 
-## Figure 2D species accumulation curves----
+## Figure 4B species accumulation curves----
 
 # Cumulative unique entries in list of vectors
 cum_unique <- function(l) {
@@ -1194,7 +886,9 @@ ggsave("Fish_plastic_phylo_d_mp_subset_nolegend.pdf", width = 45, height = 45, u
 
 
 
-# Extra figure, plastic ingestion by depth and habitat ----
+# Extra figures ----
+
+#plastic ingestion by depth and habitat
 d_full %>% 
   pull(average_depth) %>% 
   quantile(c(0.025, 0.25, 0.5, 0.85, 0.90, 0.95, 0.99), na.rm = TRUE)
@@ -1221,6 +915,309 @@ Fig_3 <- ggplot(
 Fig_3 + guides(size = FALSE, color = FALSE)
 
 dev.copy2pdf(file="Fig_AD_F.pdf", width=6, height=8)
+
+
+
+# ORDER phylogeny----
+
+d_order <- d_full %>% 
+  group_by(order) %>% 
+  summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
+            mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
+            sample_size = sum(N, na.rm = TRUE),
+            num_sp = n_distinct(binomial),
+            num_studies = n_distinct(source),
+            prop_commercial = sum(commercial %in% c("commercial", "highly commercial"))/n()) %>% 
+  drop_na(order) %>% 
+  mutate(studies_cat = as.double(cut(num_studies, 
+                                     c(0, 1, 3, Inf),
+                                     c(1,2,3))),
+         commercial_cat = cut(prop_commercial,
+                              breaks=c(-Inf, 0.01, 0.25, Inf), 
+                              labels=c("None", "Minor", "Commercial"))) %>% 
+  filter(FO_plastic >0.25, sample_size >9, num_sp > 2) %>% 
+  arrange(desc(FO_plastic))
+
+
+d_order <- d_full %>% 
+  group_by(order) %>% 
+  summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
+            mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
+            sample_size = sum(N, na.rm = TRUE),
+            num_studies = n_distinct(source),
+            prop_commercial = sum(commercial %in% c("commercial", "highly commercial"))/n()) %>% 
+  drop_na(order) %>% 
+  mutate(studies_cat = as.double(cut(num_studies, 
+                                     c(0, 1, 3, Inf),
+                                     c(1,2,3))),
+         commercial_cat = cut(prop_commercial,
+                              breaks=c(-Inf, 0.01, 0.25, Inf), 
+                              labels=c("None", "Minor", "Commercial"))) %>% 
+  arrange(desc(FO_plastic))
+
+# adding
+taxon_search <- tnrs_match_names(names = d_order$order, context_name = "All life")
+ott_in_tree <- ott_id(taxon_search)[is_in_tree(ott_id(taxon_search))]
+node_in_tree <- node_id(taxon_search)[is_in_tree(node_id(taxon_search))]
+d_order$ott_name <- unique_name(taxon_search)
+d_order$ott_id <- taxon_search$ott_id
+
+
+
+#plots ORDERS
+my_tree <- tol_induced_subtree(ott_ids = c(d_order$ott_id),
+                               label_format = "name")
+
+my_tree$tip.label[my_tree$tip.label == "mrcaott17080ott19944"] <- "Carcharhiniformes"
+my_tree$tip.label[my_tree$tip.label == "Pristiformes/Rhiniformes_group"] <- "Squaliformes"
+my_tree$tip.label[my_tree$tip.label == "Carangaria"] <- "Perciformes"
+my_tree$tip.label[my_tree$tip.label == "Gasterosteales"] <- "Trachiniformes"
+my_tree$tip.label[my_tree$tip.label == "mrcaott13841ott64982"] <- "Anguilliformes"
+
+
+
+# LOOK INTO adding Scombriformes for Tuna !!!
+
+a = as_tibble(my_tree)
+
+my_tree <- compute.brlen(my_tree, method = "Grafen", power = 1/2) #add branch lengths to my tree using the Grafen (1989) method
+my_tree <- ladderize(my_tree, right = TRUE)
+
+#add.species.to.genus(my_tree, "Alepisauridae_Synodontidae", where = "root")
+
+# adding familes to taxa manually 
+
+node.tree<-function(tree, m = 0, prefix = "NodE"){
+  res <- list(call = match.call())
+  res$m.start <- m
+  if(is.null(tree$node.label)){
+    tree <- ape::makeNodeLabel(tree)
+    tree$node.label <- rep("", tree$Nnode)
+  }
+  for(i in 1:tree$Nnode){
+    if(tree$node.label[i] == "NA" | tree$node.label[i] == ""){
+      m <- m+1
+      tree$node.label[i] <- paste(prefix, m, sep = "")
+    }
+  }
+  res$m.current <- m
+  res$prefix <- prefix
+  res$tree <- tree
+  return(res)
+}
+tree.label.info <- function(tree, label){
+  if(is.null(tree$edge.length) | any(is.na(tree$edge.length))){
+    stop("\n tree$edge.length with any NA or NULL\n")
+  }
+  if(is.null(tree$tip.label) | is.null(tree$node.label)){
+    stop("\n tree$tip.label and/or tree$node.label NULL\n")
+  }
+  n <- length(tree$tip.label)
+  where <- which(c(tree$tip.label, tree$node.label) == label)
+  if(length(where)>1){
+    stop("\n Only one label accepted or label with multiple occurrences in tree\n")
+  }
+  if(length(where)!=1){
+    stop("\n label not found\n")
+  }
+  H <- phytools::nodeHeights(tree)
+  HM <- max(H)
+  res <- data.frame(row.names = label)
+  if(where<=n){
+    res$edge <- which(tree$edge[,2] == where)
+    res$edge.length <- tree$edge.length[res$edge]
+    res$edge.height <- HM - H[res$edge, 2]
+    res$max.height <- HM
+    res$type <- "tip"
+  }else{
+    if (where == (length(tree$tip.label) + 1)){
+      res$edge<-which(tree$edge[,1] == where)[1]
+      res$edge.length <- 0
+      res$edge.height <- HM - H[res$edge, 1]
+      res$edge <- NA
+      res$max.height <- HM
+      res$type <- "root"
+    } else {
+      res$edge <- which(tree$edge[,2] == where)
+      res$edge.length <-tree$edge.length[res$edge]
+      res$edge.height <- HM - H[res$edge, 2]
+      res$max.height <- HM
+      res$type <- "node"
+    }
+  }
+  return(res)
+}
+add.taxa.phylo <- function(tree, taxa, m = 0, prefix = "NeWNodEPhylO"){
+  res <- list(call = match.call())
+  res$m.start <- m
+  if (!inherits(tree, "phylo")){ 
+    stop("\n Object tree is not of class phylo \n")
+  }
+  if(is.null(tree$node.label)){
+    stop("\n tree$node.label is NULL. Use the function node.tree\n")
+  }
+  tree.labels <- c(tree$tip.label, tree$node.label)
+  match.names <- match(taxa[,1], tree.labels)
+  if(any(is.na(match.names))){
+    print("Some nodes/tips in taxa are not present in tree$node.label/tree$tip.label:")
+    mNA <- is.na(match.names)
+    for(i in (1:nrow(taxa))[mNA]){
+      print(as.character(taxa[i, 1]))
+    }
+    stop("\n Check tree and/or taxa")
+  }
+  show.warning <- FALSE
+  for(i in 1:nrow(taxa)){
+    if(length(which(c(tree.labels) == taxa[i, 1]))>1){
+      stop(paste("\n The label", taxa[i,1], "with multiple occurrences in tree$node.label"))
+    }
+    info.temp <- tree.label.info(tree, taxa[i, 1])
+    if(!is.na(taxa[i,3]) & (info.temp$type == "node" | info.temp$type == "root")){
+      taxa[i,3] <- NA
+      show.warning <- TRUE
+    }
+    if(!is.na(taxa[i,3]) & info.temp$edge.length<taxa[i,3]){
+      stop(paste("\n The edge length to larger to tip", taxa[i,2]))
+    }
+  }
+  if(show.warning){
+    warning("\n Edge length not used in internal node anchor")
+  }
+  u.taxa <- unique(taxa[,1])
+  for(i in 1:length(u.taxa)){
+    if(length(unique(as.character(taxa[which(taxa[,1] == u.taxa[i]),3])))>1)
+      stop("\n Edge length in a sigle anchor tip must be equal")
+  }
+  edges.length <- as.numeric(taxa[, 3, drop = FALSE])
+  control<-matrix(NA, nrow(taxa), 2)
+  control[,1] <- taxa[,1]
+  for(i in 1:nrow(taxa)){
+    label <- taxa[i, 1]
+    if(length(which(label == tree$tip.label)) > 0){
+      control.temp<-control[which(control[,1] == label), 2]
+      if(all(is.na(control.temp))){
+        where <- which(tree$tip.label == label)
+        if(is.na(edges.length[i])){
+          edges.length[i] <- tree.label.info(tree, label)[1, 2]/2 #edge.length
+        }
+        tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = edges.length[i])
+      } else {
+        control.tips <- c(control.temp, label)
+        control.tips <- control.tips[!is.na(control.tips)]
+        node.name <- c(tree$tip.label, tree$node.label)[ape::getMRCA(tree, control.tips)]
+        where <- which(c(tree$tip.label, tree$node.label) == node.name)
+        tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = 0)
+      }
+      control[i, 2] <- taxa[i, 2]
+    } else {
+      where <- which(c(tree$tip.label, tree$node.label) == label)
+      tree <- phytools::bind.tip(tree, taxa[i, 2], where = where, position = 0)
+    }
+    tree.temp <- node.tree(tree, m = m, prefix = prefix)
+    tree <- tree.temp$tree
+    m <- tree.temp$m.current
+  }
+  res$m.current <- m
+  res$prefix <- prefix
+  res$new.tips <- taxa[,2]
+  res$tree <- tree
+  return(res)
+}
+
+
+# 
+# my_tree <- add.taxa.phylo(my_tree, taxa)$tree
+# my_tree <- as.phylo(my_tree) 
+# 
+# a = as_tibble(my_tree)
+# 
+#THINGS TO ADD IN: Pleuronectiformes, Scorpaeniformes, Gasterosteiformes (Should be where "Trachiniformes" now is?)
+
+final_taxa <- matrix(c("Zeiformes", "Tetraodontiformes", "Perciformes",  # This row exists on phylogeny
+                       "Gasterosteiformes", "Pleuronectiformes", "Scorpaeniformes",   # These are tips to add on phylogeny
+                       NA, NA, NA),
+                     3,3)
+final_taxa
+
+my_tree <- add.taxa.phylo(my_tree, final_taxa)$tree
+my_tree <- as.phylo(my_tree)
+
+
+
+my_tree <- compute.brlen(my_tree, method = "Grafen", power = 1/2) #add branch lengths to my tree using the Grafen (1989) method
+my_tree <- ladderize(my_tree, right = TRUE)
+
+# first plot try, fan layout
+p <- ggtree(my_tree, layout="fan", open.angle=160) +
+  #geom_text2(aes(label=label), hjust=-.2, size=4) +
+  geom_tiplab2(parse = TRUE,
+               size = 9,offset = 0.05) +
+  ggplot2::xlim(-0.6, 1.3) 
+
+
+p <- rotate_tree(p, -12)
+p
+
+#dev.copy2pdf(file="test_phylo.pdf", width=20, height=20)
+
+# Adding data
+shapes <- c("None" = 15, "Minor" = 17, "Commercial" = 16)
+
+p %<+% d_order + 
+  aes(color = FO_plastic) +
+  geom_tippoint(aes(color = FO_plastic, shape = commercial_cat, size = studies_cat)) +
+  scale_color_gradientn(colours = c("steelblue4", "darkgoldenrod1", 
+                                    "darkorange", "orangered2", "red3", "red4"), 
+                        name = "Proportion with \ningested plastic") +
+  #scale_size(range = c(3, 7)) +
+  #scale_size_continuous(guide = FALSE, range = c(3, 7)) +
+  scale_size_continuous(breaks = seq(from = 1, to = 3, by = 1), 
+                        labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
+                        range = c(3, 10)) +
+  scale_shape_manual(na.translate = F, values = shapes) +
+  labs(shape = "Commercial \nstatus") +
+  theme(legend.position = c(0.49, 0.49),
+        legend.key.size = unit(1.25, "cm"),
+        legend.text = element_text(size = 18),
+        legend.title = element_text(size = 20),
+        legend.box = "horizontal") +
+  guides(
+    size = FALSE, shape = FALSE, color  = FALSE
+    #shape = guide_legend(override.aes = list(size = 5))
+  )
+
+
+
+dev.copy2pdf(file="Fish_order_plastic_phylo_final_nolegend_NEE.pdf", width=22, height=20)
+ggsave("Fish_order_plastic_phylo_final_nolegend_NEE.jpg", width = 20, height = 20, units = "in")
+
+# Figure 1B (code also for Extended 1B) ----
+##Map depicting frequency of occurrence of plastic ingestion according to Longhurst province. 
+
+#Here we also show data preparation for most maps in this publication (Figures 2, S3 - S5). This code bins and organizes the data for use in QGIS. The resulting .csv was exported from R and imported into QGIS.  More detailed instructions on how to import .csv files into QGIS are listed at the end of this section. 
+
+# load packages and data
+library(tidyverse)
+library(gbm)
+library(dismo)
+library(mgcv)
+library(lme4)
+library(gamm4)
+library(readxl)
+library(readr)
+library(ggplot2)
+
+### For all figures (2, S2a and S2b, S3)
+dat <- read.csv("/Users/test/Box Sync/Microplastics/Fish-plastic_meta-analysis/Plastics ingestion records fish master_final_SciAd.csv")
+# get rid of estuarine studies
+data <- dat[dat$Water.type=="marine",] # Use this full data set for Figures S2a and S3
+nrow(dat)
+nrow(data)
+
+## Figure S2b: include this line if you're looking for studies that use Method 3
+data <- data %>% filter(Method.type==3) 
+###################
+
 
 
 
