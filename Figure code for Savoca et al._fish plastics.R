@@ -545,7 +545,7 @@ dev.copy2pdf(file="risk_plot_NEE_1972_2015.pdf", width=10.25, height=7)
 
 
 # Figure 4A, FO over time (2010-present)----
-FO_year_2010 <- d_full %>% 
+FO_year_2010 <- d_full_R1 %>% 
   drop_na(N,prop_w_plastic, publication_year) %>% 
   filter(publication_year >2009, method_type == 3) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
   mutate(commercial = fct_collapse(commercial,
