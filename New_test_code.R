@@ -1,6 +1,8 @@
 # Trying revisions data (updated w four comments from reviewers 1)
 
 library(tidyverse)
+library(ggpubr)
+remove.packages("rgl")
 library(rgl)
 library(plotly)
 
@@ -29,10 +31,30 @@ d_R1 = read_csv("Plastics ingestion records fish master_final_GCB_v1.csv") %>%
                          ifelse(family == "Merluccidae", "Merlucciidae", family)),
          adjacency_water = as_factor(ifelse(water_type == "estuarine", "estuarine", 
                                             ifelse(adjacency == "coastal", "coastal", "oceanic")))) %>% 
-  # Additional edits here for R1
-  filter(source != "Sun et al. 2019")  #duplicate with Zhao et al. 2019
-
   
+  # Additional edits here for R1
+  filter(source != "Sun et al. 2019") %>%   #duplicate with Zhao et al. 2019, removing Sun et al.
+  
+  mutate(
+    equipment_general = case_when(
+      equipment_used %in% c("bottom trawls, trammel fishing", "bottom trawls", "bottom trawls, aquaculture", "bottom trawls, purse seine") ~ "bottom trawls",
+      equipment_used %in% c("fish market", "fish market, bycatch", "fish market, field collection", "fish market, fishermen") ~ "fish market",
+      equipment_used %in% c("fyke nets, gillnets", "gillnets", "gillnets, purse seine", "gillnet, fish market") ~ "gillnets",
+      equipment_used %in% c("longline", "line", "nets, hook-and-line", "trolling lines") ~ "lines incld. longlines",
+      equipment_used %in% c("trawling", "beam trawl", "fyke nets, trawling", "otter trawl, trawling, longline", "semi-pelagic trawls", "otter trawl", "nets, trawling", "otter trawl, fyke nets", "pelagic trawl", "trawling, bycatch", "pelagic trawl, bottom trawls", "rapido trawl", "shrimp nets") ~ "trawling",
+      equipment_used %in% c("purse seine", "beach seine") ~ "seines"),
+    
+    capture_general = case_when(
+      capture_purpose %in% c("Aquaculture", "plastic study, aquaculture") ~ "aquaculture", 
+      capture_purpose %in% c("artisanal fishing", "recreational fishing", "artisanal fishing, fish market", "plastic study, artisanal fishery") ~ "small scale fishing",
+      capture_purpose %in% c( "bycatch", "incidental") ~ "bycatch",
+      capture_purpose %in% c("plastic study (not listed)", "plastic study (not listed)", "plastic study", "plastic study, commercial fishing", "plastic study, fish market", "plastic study, commercial fishing, recreational fishing") ~ "plastic study")
+    )
+         
+
+d_R1 %>% summarise(n_studies = n_distinct(source))
+
+
 #database for all data where microplastics were quantified; 0 = no, 1 = yes
 d_full_R1 <- d_R1 %>%
     #filter(method_type == 3) %>%  # Can TOGGLE in and out
@@ -52,11 +74,92 @@ d_full_R1_by_study <- d_full_R1 %>%
             Clean_lab = first(clean_lab_YN),
             Min_size = first(min_size_YN),
             Min_size = replace_na(Min_size, 0),
-            Smallest_detect_size = first(smallest_detection_size_limits_mm))
+            Smallest_detect_size = first(smallest_detection_size_limits_mm),
+            Method_type = first(method_type)
+            # Equipment_general = first(equipment_general),
+            # Capture_general = first(capture_general)
+            )
 
+
+gold_standard_studies <- d_full_R1_by_study %>% 
+  filter(Clean_lab == 1, Blanks_used == 1, Polymer_confirmation ==1, Method_type == 3)
+
+
+
+# Exploratory plots for new data ----
+
+Equipment_bp <- ggplot(d_full_R1, aes(equipment_general, prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  labs(x = "Equipement used",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw(base_size = 18)
+Equipment_bp
+
+
+Capture_bp <- ggplot(d_full_R1, aes(capture_general, prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  labs(x = "Capture purpose",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw()
+Capture_bp
+
+
+PolyConf_bp <- ggplot(d_full_R1, aes(as.factor(poly_conf_YN), prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  scale_x_discrete(labels = c('No','Yes')) +
+  labs(x = "Polymer confirmation",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw(base_size = 18)
+PolyConf_bp
+
+
+Blanks_bp <- ggplot(d_full_R1, aes(as.factor(blanks_used_YN), prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  scale_x_discrete(labels = c('No','Yes')) +
+  labs(x = "Blank methods",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw(base_size = 18)
+Blanks_bp
+
+
+
+Clean_bp <- ggplot(d_full_R1, aes(as.factor(clean_lab_YN), prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  scale_x_discrete(labels = c('No','Yes')) +
+  labs(x = "Clean lab procedures described",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw(base_size = 18)
+Clean_bp
+
+
+MinSize_bp <- ggplot(d_full_R1, aes(as.factor(min_size_YN), prop_w_plastic)) +
+  geom_boxplot() +
+  geom_point(aes(size = N),
+             position=position_jitter(height=0, width=0.2), alpha = 0.5) +
+  scale_x_discrete(labels = c('No','Yes')) +
+  labs(x = "Minimum detection (size) threshold reported",
+       y = "Proportion with ingested plastic",
+       size = "Sample size") +
+  theme_bw(base_size = 18)
+MinSize_bp
 
   
-#trying binomial plots
+#trying binomial plots for study quality----
   
 bp_polyconf <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
               aes(Publication_year, Polymer_confirmation)) +
@@ -106,28 +209,9 @@ bp_reportmin <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
 bp_reportmin
 
 
-bp_cleanlab_reportmin <- ggplot(filter(d_full_R1_by_study, Publication_year >2009)) +
-  stat_smooth(aes(Publication_year, Min_size, color = "red"),
-              method="glm", method.args=list(family="binomial"),formula=y~x, 
-              alpha=0.1, size=1) +
-  geom_point(aes(Publication_year, Min_size, color = "red"),
-             position=position_jitter(height=0.03, width=0)) +
-  
-  
-  stat_smooth(aes(Publication_year, Clean_lab, color = "blue"),
-              method="glm", method.args=list(family="binomial"),formula=y~x, 
-              alpha=0.2, size=1) +
-  geom_point(aes(Publication_year, Clean_lab, color  = "blue"),
-             position=position_jitter(height=0.03, width=0)) +
-  labs(x = "Publication year",
-       y = "Pr(report minimum detection threshold)") +
-  scale_x_continuous(breaks = 2010:2020) +
-  theme_minimal(base_size = 12)
-bp_cleanlab_reportmin
 
 
-
-# combined binomial plot----
+# combined binomial plots----
 
 
 BP_Fig_full <- ggarrange(bp_polyconf, bp_blanks, 
@@ -141,21 +225,89 @@ BP_Fig_full
 
 
 
+
+
+bp_all <- ggplot(filter(d_full_R1_by_study, Publication_year >2009)) +
+  
+  
+  stat_smooth(aes(Publication_year, Min_size),
+              color = "black",
+              method="glm", method.args=list(family="binomial"),formula=y~x,
+              alpha=0.1, size=1) +
+  geom_point(aes(Publication_year, Min_size),
+             position=position_jitter(height=0.05, width=0.05), 
+             color = "black", alpha = 0.2) +
+  
+  stat_smooth(aes(Publication_year, Clean_lab),
+              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              color = "dodgerblue3",alpha=0.2, size=1) +
+  geom_point(aes(Publication_year, Clean_lab),
+             position=position_jitter(height=0.05, width=0.05),
+             color  = "dodgerblue3", alpha = 0.2) +
+  
+  stat_smooth(aes(Publication_year, Blanks_used),
+              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              color = "firebrick2",alpha=0.2, size=1) +
+  geom_point(aes(Publication_year, Blanks_used),
+             position=position_jitter(height=0.05, width=0.05),
+             color  = "firebrick2", alpha = 0.2) +
+  
+  stat_smooth(aes(Publication_year, Polymer_confirmation),
+              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              color = "chocolate2",alpha=0.2, size=1) +
+  geom_point(aes(Publication_year, Polymer_confirmation),
+             position=position_jitter(height=0.05, width=0.05),
+             color  = "chocolate2", alpha = 0.2) +
+  
+  geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  
+  labs(x = "Publication year",
+       y = "Pr(Quality metrics)") +
+  scale_x_continuous(breaks = 2010:2020) +
+  theme_minimal(base_size = 14)
+bp_all
+
+
+
+bp_all_long <- d_full_R1_by_study %>% 
+  filter(Publication_year >2009) %>%  #can toggle in and out
+  pivot_longer(cols = Polymer_confirmation:Min_size, names_to = "Metric_type", values_to = "Metric_value") %>% 
+
+  ggplot() + 
+  
+  stat_smooth(aes(Publication_year, Metric_value, color = Metric_type),
+              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              alpha=0.2, size=1) +
+  geom_point(aes(Publication_year, Metric_value, color = Metric_type),
+             position=position_jitter(height=0.05, width=0.05),
+             alpha = 0.2) +
+  
+  geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  
+  labs(x = "Publication year",
+       y = "Pr(reporting QA/QC metrics)") +
+  scale_x_continuous(breaks = 2010:2020) +
+  theme_minimal(base_size = 14)
+
+bp_all_long
+
+
 #plot of minimum size of plastic----
 
 Detect_FO <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
               aes(Smallest_detect_size, Overall_FO,
                   weight = N, size= N)) +
   scale_x_reverse() +
-  geom_point(aes(color = Overall_FO)) +
-  geom_smooth() +
+  geom_point(aes(color = as.factor(Publication_year)), alpha = 0.5) +
+  geom_smooth(method="gam", formula = y ~s(x), se = F) +
   geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
-  scale_color_gradientn(colours = c("steelblue4",
-                                    "darkgoldenrod1",
-                                    "darkorange", "orangered1",
-                                    "firebrick1", "red3", "red4")) +
+  # scale_color_gradientn(colours = c("steelblue4",
+  #                                   "darkgoldenrod1",
+  #                                   "darkorange", "orangered1",
+  #                                   "firebrick1", "red3", "red4")) +
   scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
   scale_x_reverse(breaks=seq(0, 1, 0.05), limits = c(1, 0)) +
+  geom_vline(xintercept = 0.1, linetype = "dashed", color = "grey50") +
   #scale_shape_manual(na.translate = F, values = shapes) +
   ylim(0, 1) +
   labs(x = "Smallest size detected (mm)",
@@ -178,11 +330,11 @@ Detect_PubYear <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
   geom_smooth() +
 
   scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
-  scale_x_reverse(breaks=seq(2020, 2010, 1)) +
+  scale_x_continuous(breaks=seq(2010, 2020, 1)) +
   #scale_shape_manual(na.translate = F, values = shapes) +
   ylim(0, 1) +
   labs(x = "Publication year",
-       y = "Proportion with ingested plastic",
+       y = "Smallest size detected (mm)",
        size = "Sample size") +
   theme_classic(base_size = 16) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
@@ -191,12 +343,53 @@ Detect_PubYear <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
 Detect_PubYear
 
 
+
+
+
+
+#Trying two y-axes plot
+
+d_full_R1_tap <- d_full_R1 %>% 
+  mutate(smallest_detection_size_limits_mm = rev(smallest_detection_size_limits_mm))
+
+
+Detect_FO_PubYear <- ggplot(data = filter(d_full_R1, publication_year >2009),
+                            aes(size = N, weight = N)) +
+  scale_x_reverse() +
+  geom_point(aes(publication_year, prop_w_plastic), alpha = 0.3)+
+  geom_smooth(aes(publication_year, prop_w_plastic),
+              method = "lm", color = "red") +
+  
+  geom_point(aes(publication_year, 1-smallest_detection_size_limits_mm), alpha = 0.2) +
+  geom_smooth(aes(publication_year, 1-smallest_detection_size_limits_mm),
+              method = "lm", color = "blue") +
+  #scale_y_reverse() + 
+  
+  #scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
+  scale_x_continuous(breaks=seq(2010, 2020, 1)) +
+  scale_y_continuous(
+    name = "Proportion with ingested plastic",
+    sec.axis = sec_axis(~rev(.), name = "Smallest size detected (mm)")) +
+  
+  labs(x = "Publication year",
+       size = "Sample size") +
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y.left = element_text(color = "red"),
+        axis.title.y.right = element_text(color = "blue"),
+        legend.title = element_text(size = 12),
+        legend.text = element_text(size = 10))
+Detect_FO_PubYear
+
+
+dev.copy2pdf(file="Detect_FO_PubYear_tot.pdf", width=10, height=6)
+
 # Trying 3D plot ----
 Try_3D <- plot_ly(
   x = d_full_R1_by_study$Publication_year, 
   y = d_full_R1_by_study$Overall_FO, 
-  z = d_full_R1_by_study$Smallest_detect_size, 
-  #size = ~N,
+ # z = d_full_R1_by_study$Smallest_detect_size, 
+  #size = N,
 ) %>%
   #add_markers() %>%
   layout(
@@ -204,8 +397,17 @@ Try_3D <- plot_ly(
                  yaxis = list(title = 'Proportion with ingested plastic'),
                  zaxis = list(title = 'Smallest size detected (mm)'))
   ) %>% 
-  add_surface()
+  add_surface(z = volcano)
 Try_3D
+
+
+
+Try_3D <- rgl::persp3d(x = d_full_R1_by_study$Publication_year,
+                  y = d_full_R1_by_study$Overall_FO, 
+                  z = d_full_R1_by_study$Smallest_detect_size, 
+                  col="skyblue")
+Try_3D
+
 
 
 # Figure 1, ORDER phylogeny----
