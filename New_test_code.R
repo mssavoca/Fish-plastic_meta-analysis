@@ -8,7 +8,7 @@ library(plotly)
 
 
 
-d_R1 = read_csv("Plastics ingestion records fish master_final_GCB_v1.csv") %>% 
+d_R1 = read_csv("Plastics ingestion records fish master_final_GCB_v2.csv") %>% 
   janitor::clean_names() %>% 
   rename(NwP = nw_p,
          N = n,
@@ -62,7 +62,8 @@ d_full_R1 <- d_R1 %>%
     mutate(poly_conf_YN = ifelse(polymer_confirmation %in% c("none", NA), 0,1),
            blanks_used_YN = ifelse(blanks_used %in% c("no", "not described", NA), 0,1),
            clean_lab_YN = ifelse(clean_lab_procedures_used %in% c("no", "not described", NA), 0,1),
-           min_size_YN = ifelse(smallest_detection_size_limits_mm == "NA", 0,1))
+           min_size_YN = ifelse(is.na(smallest_detection_size_limits_mm), 0,1),
+           overall_reliability = poly_conf_YN + blanks_used_YN + clean_lab_YN + min_size_YN)
 
 d_full_R1_by_study <- d_full_R1 %>% 
   group_by(source) %>% 
@@ -78,7 +79,8 @@ d_full_R1_by_study <- d_full_R1 %>%
             Method_type = first(method_type)
             # Equipment_general = first(equipment_general),
             # Capture_general = first(capture_general)
-            )
+            ) %>% 
+  mutate(Overall_reliability = Polymer_confirmation + Blanks_used + Clean_lab + Min_size)
 
 
 gold_standard_studies <- d_full_R1_by_study %>% 
