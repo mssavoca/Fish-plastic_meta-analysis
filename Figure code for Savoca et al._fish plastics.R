@@ -14,8 +14,6 @@ library(rotl)
 library(phytools)
 library(tidyverse)
 library(stringr)
-library(mgcv)
-library(gamm4)
 library(MuMIn)
 library(ggrepel)
 library(sjPlot)
@@ -37,7 +35,7 @@ abbr_binom <- function(binom) {
 d_poll <- as_tibble(read_csv("Spatial Information_microplastics.csv"))
 
 
-d = read_csv("Plastics ingestion records fish master_final_SciAd.csv") %>% 
+d_R1 = read_csv("Plastics ingestion records fish master_final_GCB_v2.csv") %>% 
   janitor::clean_names() %>% 
   rename(NwP = nw_p,
          N = n,
@@ -59,20 +57,53 @@ d = read_csv("Plastics ingestion records fish master_final_SciAd.csv") %>%
          family = ifelse(family == "Gasterostediae", "Gasterosteidae", 
                          ifelse(family == "Merluccidae", "Merlucciidae", family)),
          adjacency_water = as_factor(ifelse(water_type == "estuarine", "estuarine", 
-                                            ifelse(adjacency == "coastal", "coastal", "oceanic"))))
+                                            ifelse(adjacency == "coastal", "coastal", "oceanic")))) %>% 
+  
+  # Additional edits here for R1
+  filter(source != "Sun et al. 2019") %>%   #duplicate with Zhao et al. 2019, removing Sun et al.
+  
+  mutate(
+    equipment_general = case_when(
+      equipment_used %in% c("bottom trawls, trammel fishing", "bottom trawls", "bottom trawls, aquaculture", "bottom trawls, purse seine") ~ "bottom trawls",
+      equipment_used %in% c("fish market", "fish market, bycatch", "fish market, field collection", "fish market, fishermen") ~ "fish market",
+      equipment_used %in% c("fyke nets, gillnets", "gillnets", "gillnets, purse seine", "gillnet, fish market") ~ "gillnets",
+      equipment_used %in% c("longline", "line", "nets, hook-and-line", "trolling lines") ~ "lines incld. longlines",
+      equipment_used %in% c("trawling", "beam trawl", "fyke nets, trawling", "otter trawl, trawling, longline", "semi-pelagic trawls", "otter trawl", "nets, trawling", "otter trawl, fyke nets", "pelagic trawl", "trawling, bycatch", "pelagic trawl, bottom trawls", "rapido trawl", "shrimp nets") ~ "trawling",
+      equipment_used %in% c("purse seine", "beach seine") ~ "seines"),
+    
+    capture_general = case_when(
+      capture_purpose %in% c("Aquaculture", "plastic study, aquaculture") ~ "aquaculture", 
+      capture_purpose %in% c("artisanal fishing", "recreational fishing", "artisanal fishing, fish market", "plastic study, artisanal fishery") ~ "small scale fishing",
+      capture_purpose %in% c( "bycatch", "incidental") ~ "bycatch",
+      capture_purpose %in% c("plastic study (not listed)", "plastic study (not listed)", "plastic study", "plastic study, commercial fishing", "plastic study, fish market", "plastic study, commercial fishing, recreational fishing") ~ "plastic study"),
+    
+    brk_pt_MD = ifelse(publication_year >= 2017, "after", "before")
+  )
 
+
+# Expanded dataframe that accounts for sample size with rows----
+df_expanded_full <- d_R1 %>% 
+  drop_na(N) %>% 
+  map_df(., rep, .$N)
+
+
+d_full %>% summarise(n_studies = n_distinct(source))
 
 #database for all data where microplastics were quantified
-d_full <- d %>%
+d_full <- d_R1 %>%
   #filter(method_type == 3) %>%  # Can TOGGLE in and out
-  filter(includes_microplastic == "Y") 
+  filter(includes_microplastic == "Y") %>% 
+  mutate(commercial = fct_collapse(commercial,
+                            Commercial = c("commercial", "highly commercial"),
+                            Minor = c("minor commercial", "subsistence", "subsistence fisheries"),
+                            None = "none"))
 
 
 
 
 # species summary table
-d_sp_sum <- d %>%
-  filter(publication_year <2016) %>% 
+d_sp_sum <- d_R1 %>%
+  #filter(publication_year >=2017) %>% 
   filter(!species %in% c("sp.", "spp.","spp")) %>%
   group_by(binomial, family, order, commercial, iucn_status) %>%
   drop_na(binomial, family) %>% 
@@ -86,8 +117,10 @@ d_sp_sum <- d %>%
                                      c(1,2,3))),
          commercial = fct_collapse(commercial,
                                    Commercial = c("commercial", "highly commercial"),
-                                   Minor = c("minor commercial", "subsistence"),
-                                   None = "none")) %>%
+                                   Minor = c("minor commercial", "subsistence", "subsistence fisheries"),
+                                   None = "none")) %>% 
+ # filter(commercial == "Commercial") %>% 
+ # filter(Sample_size >9, Sp_mean >=0.25) %>% 
   arrange(-Sp_mean)
 
 
@@ -96,7 +129,7 @@ d_sp_sum <- d %>%
 
 # Figure 1, Family phylogeny----
 
-d_family <- d_full %>% 
+d_family <- d_R1 %>% 
   group_by(family) %>% 
   summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
             mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
@@ -115,7 +148,7 @@ d_family <- d_full %>%
   arrange(desc(FO_plastic))
 
 
-d_order <- d_full %>% 
+d_order <- d_R1 %>% 
   group_by(order) %>% 
   summarise(FO_plastic = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
             mean_num_plast = mean(mean_num_particles_per_indv, na.rm = TRUE),
@@ -386,131 +419,50 @@ p %<+% d_family +
 dev.copy2pdf(file="Fish_family_plastic_phylo_final_nolegend_SciAd.pdf", width=20, height=20)
 ggsave("Fish_family_plastic_phylo_final_nolegend_SciAd.jpg", width = 20, height = 20, units = "in")
 
-### Figure 2 ###
-# include this line if you're looking for studies that have to include microplastics
-data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") 
+### Figure 2 ### ----
 
 
+### Quality assurance plot----
 
-# Here we want to get average proportion of plastic per province
-# data of interest is:
-data2 <- data[,c("Binomial", "Oceanographic.province..from.Longhurst.2007.", "Prop.w.plastic", "NwP", "N", "Source")]
-colnames(data2) <- c("Species", "OceanProv", "PropPlastic", "NwP", "N", "Source")
-data3<- data2[order(data2$OceanProv),]
-
-# We need our provinces to match the publicly available shape file, so we are renaming those that don't and then dropping the replaced factor levels
-levels(data3$OceanProv) <- c(levels(data3$OceanProv), "CHIL", "BPLR", "NASE", "NPPF") 
-data3$OceanProv[data3$OceanProv=="BPRL"] <- "BPLR"
-data3$OceanProv[data3$OceanProv=="HUMB"] <- "CHIL"
-data3$OceanProv[data3$OceanProv=="NAST E"] <- "NASE"
-data3$OceanProv[data3$OceanProv=="NPSE"] <- "NPPF"
-
-# some checks to make sure that worked
-table(data3$OceanProv)
-data3$OceanProv <- droplevels(data3$OceanProv)
-levels(data3$OceanProv)
-
-# Here we will use a for-loop to fill in the desired variables (average plastic, number of fish, number of studies, number of species, normalized sample size per province)
-
-#Set up new dataframe to include our desired variables
-prov <- unique(data3$OceanProv)
-prov
-length(prov)
-aveplast <- rep(NA, length(prov))
-numfish <- rep(NA, length(prov))
-numstudies <- rep(NA, length(prov))
-numspecies <- rep(NA, length(prov))
-normalized <- rep(NA, length(prov))
-
-# Now our for-loop
-for (i in 1:length(prov)){
-  sub <- data3[data3$OceanProv==prov[i],]
-  aveplast[i] <- sum(sub$NwP, na.rm=T)/sum(sub$N, na.rm=T)
-  numfish[i] <- sum(sub$N, na.rm=T)
-  numstudies[i] <- length(unique(sub$Source))
-  numspecies[i] <- length(unique(sub$Species))
-  normalized[i] <- aveplast[i]*sum(sub$N, na.rm=T)
-}
-
-# Checking output
-aveplast
-length(aveplast)
-numfish
-table(numfish)
-numstudies
-head(data3)
-numspecies
-
-#Combine all of these variables into a new data frame, which we will build off of to make our map
-newdat <- data.frame(prov, aveplast, numfish, numstudies, numspecies, normalized)
-newdat
-
-# We are going to bin data for easier categorization and comparison:
-# ave plastic
-newdat$aveplastbin <- rep(NA, length(prov))
-newdat$aveplastbin[newdat$aveplast<=.10]= "<.10"
-newdat$aveplastbin[newdat$aveplast >.10 & newdat$aveplast<=20]= ".11-.20"
-newdat$aveplastbin[newdat$aveplast >.20 & newdat$aveplast<=.30]= ".21-.30"
-newdat$aveplastbin[newdat$aveplast >.30 & newdat$aveplast<=.40]= ".31-.40"
-newdat$aveplastbin[newdat$aveplast >.40 & newdat$aveplast<=.50]= ".41-.50"
-newdat$aveplastbin[newdat$aveplast >.50 & newdat$aveplast<=.60]= ".51-.60"
-newdat$aveplastbin[newdat$aveplast >.60 & newdat$aveplast<=.70]= ".61-.70"
-newdat$aveplastbin[newdat$aveplast >.70 & newdat$aveplast<=.80]= ".71-.80"
-newdat$aveplastbin[newdat$aveplast >.80 & newdat$aveplast<=.90]= ".81-.90"
-newdat$aveplastbin[newdat$aveplast >.90 & newdat$aveplast<=.99]= ".91-.99"
-newdat$aveplastbin[newdat$aveplast ==1]= "1"
-
-# number of studies
-summary(newdat$numstudies)
-newdat$numstudiesbin <- rep(NA, length(prov))
-newdat$numstudiesbin[newdat$numstudies == 1] = "1"
-newdat$numstudiesbin[newdat$numstudies >1 & newdat$numstudies<=5]= "2-5"
-newdat$numstudiesbin[newdat$numstudies >5 & newdat$numstudies<=10]= "6-10"
-newdat$numstudiesbin[newdat$numstudies >=10]= ">10"
-
-# number of fish/study
-summary(newdat$numfish)
-newdat$numfishbin <- rep(NA, length(prov))
-newdat$numfishbin[newdat$numfish >=1 & newdat$numfish<10]= "< 10"
-newdat$numfishbin[newdat$numfish >=10 & newdat$numfish<=50]= "10-50"
-newdat$numfishbin[newdat$numfish >50 & newdat$numfish<=100]= "51-100"
-newdat$numfishbin[newdat$numfish >100 & newdat$numfish<500]= "101-500"
-newdat$numfishbin[newdat$numfish >500 & newdat$numfish<=1000]= "501-1000"
-newdat$numfishbin[newdat$numfish >1000 & newdat$numfish<=1500]= "1001-1500"
-newdat$numfishbin[newdat$numfish >1500]= ">1500"
-
-# normalized proportion of ingestion bins
-summary(newdat$normalized)
-newdat$normbin <- rep(NA, length(prov))
-newdat$normbin[newdat$normalized >=1 & newdat$normalized<25]= "< 10"
-newdat$normbin[newdat$normalized >=10 & newdat$normalized<=50]= "10-50"
-newdat$normbin[newdat$normalized >50 & newdat$normalized<=100]= "51-100"
-newdat$normbin[newdat$normalized >100 & newdat$normalized<500]= "101-500"
-newdat$normbin[newdat$normalized >500 & newdat$normalized<=1000]= "501-1000"
-newdat$normbin[newdat$normalized >1000 & newdat$normalized<=1500]= "1001-1500"
-newdat$normbin[newdat$normalized >1500]= ">1500"
+# color palette for figures
+pal <- c("Min_size" = "black", "Clean_lab" = "dodgerblue3", "Blanks_used" = "firebrick2",  "Polymer_confirmation" = "chocolate2")
 
 
-# Add a column with labels so that we can just use these for Figures 2, S2-S3 when we create it in GIS
-newdat$labels <- paste(newdat$prov, " (n=",newdat$numfish,")", sep = "")
+bp_all_long <- d_full_R1_by_study %>% 
+  filter(Publication_year >2009) %>%  #can toggle in and out
+  pivot_longer(cols = Polymer_confirmation:Min_size, names_to = "Metric_type", values_to = "Metric_value") %>% 
+  
+  ggplot() + 
+  
+  stat_smooth(aes(Publication_year, Metric_value, color = Metric_type),
+              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              alpha=0.2, size=1) +
+  geom_point(aes(Publication_year, Metric_value, color = Metric_type),
+             position=position_jitter(height=0.05, width=0.05),
+             alpha = 0.2) +
+  
+  #geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  
+  scale_color_manual(values = pal, labels = c("Blanks \nused", 
+                                              "Clean lab methods \ndescribed", 
+                                              "Minimum size \nthreshold reported", 
+                                              "Polymer \nconfirmation")) +
+  
+  labs(x = "Publication year",
+       y = "Quality assurance \nmetrics described",
+       color = "Quality assurance \nmetric") +
+  scale_x_continuous(breaks = 2010:2020) +
+  scale_y_continuous(breaks = c(0,1), labels = c("No","Yes")) +
+  theme_classic(base_size = 12) +
+  theme(legend.spacing.y = unit(0.25, 'cm'),
+        legend.key.size = unit(0.75, "cm"),
+        legend.position = "top",
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8))
 
-# Write the data into a .csv file with all of the organized, binned variables.
-#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_updated.csv") #(Map w/ all data; Fig S2A)
+bp_all_long
 
-# if have run this 
-#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Map w/ Microplastics only; Fig 2)
-write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method 3 only; Fig S2B)
-
-#### To bring this file into QGIS for mapping:
-# 1. Import as a vector layer;
-# 2. Join this layer by province code with the shape file for the Longhurst provinces that can be downloaded from here: http://www.marineregions.org/downloads.php#longhurst.
-# 3. Adjust colors, labels, and variables using the "Properties" menu in QGIS.
-
-# Figure 2 was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the microplastic only data. The labels were assigned from the "labels" column. 
-
-#Figure S2 was made from a) the full dataset, and b) by subsetting the data to studies that used method 3. The labels were assigned from the "labels" column. 
-
-#Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
+dev.copy2pdf(file="Quality_assurance_plot.pdf", width=5.25, height=4)
 
 
 # Figure 3, risk plot  ---- 
@@ -533,24 +485,24 @@ risk_plot <- d_sp_sum %>%
   scale_size_continuous(breaks = seq(from = 1, to = 3, by = 1), 
                         labels = c("Poorly studied (n=1)", "Moderately studied (n=2-3)", "Well studied (n>3)"),
                         range = c(1.5, 5)) +
-  # annotate("text", x = c(0.4, 3, 0.4, 3),
-  #          y=c(0.75, 0.75, 0.1, 0.1),
+  # annotate("text", x = c(0.4, 3.25, 0.4, 3.25),
+  #          y=c(0.7, 0.7, 0.07, 0.07),
   #          label = c("high incidence, data poor", "high incidence, data rich",
   #                    "low incidence, data poor", "low incidence, data rich")) +
   theme_classic(base_size = 16) +
   guides(shape = guide_legend(override.aes = list(size = 3)))
 risk_plot
 
-dev.copy2pdf(file="risk_plot_NEE_1972_2015.pdf", width=10.25, height=7)
+dev.copy2pdf(file="risk_plot_recent.pdf", width=10, height=7)
 
 
 # Figure 4A, FO over time (2010-present)----
 FO_year_2010 <- d_full_R1 %>% 
   drop_na(N,prop_w_plastic, publication_year) %>% 
-  filter(publication_year >2009, method_type == 3) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
+  filter(publication_year >2009) %>%   #; CAN TOGGLE THIS IN AND OUT; BUT NOW IT"S IN D FULL TOO
   mutate(commercial = fct_collapse(commercial,
                             Commercial = c("commercial", "highly commercial"),
-                            Minor = c("minor commercial", "subsistence"),
+                            Minor = c("minor commercial", "subsistence", "subsistence fisheries"),
                             None = "none")) 
 
 FO_year_lm <- lm(prop_w_plastic~publication_year, weights = N, data = FO_year_2010)
@@ -560,6 +512,9 @@ FO_year <- ggplot(data = FO_year_2010,
        aes(publication_year,prop_w_plastic, weight = N, size= N)) +
   geom_point(aes(color = prop_w_plastic, shape = commercial), alpha = 0.6) +
   geom_smooth(method = "lm", show.legend = FALSE, size = 0.75, color = "black") +
+  geom_smooth(data = filter(d_full_R1_by_study, Publication_year >2009),
+              aes(Publication_year, 1-Smallest_detect_size),
+              method = "lm", color = "blue") +
   xlim(2009,2020) + 
   geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
   scale_color_gradientn(colours = c("steelblue4",
@@ -573,15 +528,77 @@ FO_year <- ggplot(data = FO_year_2010,
        y = "Proportion with ingested plastic",
        size = "Sample size") +
   theme_classic(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.title = element_text(size = 12),
-        legend.text = element_text(size = 10))
+  scale_y_continuous(
+    name = "Proportion with ingested plastic",
+    sec.axis = sec_axis(~rev(.), name = "Minimum size thresold (mm)")) +
+  
+  labs(x = "Publication year",
+       size = "Sample size") +
+  theme_classic(base_size = 16) +
+  theme(
+    # axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title.y.left = element_text(color = "red3"),
+    axis.text.y.left = element_text(color = "red3"),
+    axis.title.y.right = element_text(color = "blue"),
+    axis.text.y.right = element_text(color = "blue"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "none")
+
 FO_year
 
 dev.copy2pdf(file="FO_by_year_Method3.pdf", width=6.75, height=6)
 
 
-# average FO in 2019
+
+
+Detect_FO_PubYear <- ggplot() +
+  
+  geom_point(data = filter(d_full, publication_year >2009),
+             aes(publication_year, prop_w_plastic,
+               color = prop_w_plastic, shape = commercial, size = N, weight = N), alpha = 0.6) +
+  geom_smooth(data = filter(d_full_R1, publication_year >2009),
+              aes(publication_year, prop_w_plastic,
+                  size = N, weight = N),
+              method = "lm", color = "black") +
+  
+  # geom_point(data = filter(d_full_R1_by_study, Publication_year >2009),
+  #            aes(Publication_year, 1-Smallest_detect_size), 
+  #            alpha = 0.5, shape = 18, color = "blue") +
+  geom_smooth(data = filter(d_full_R1_by_study, Publication_year >2009),
+              aes(Publication_year, 1-Smallest_detect_size),
+              method = "lm", color = "palegreen4") +
+  xlim(2009,2020) + 
+  geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
+  scale_color_gradientn(colours = c("steelblue4",
+                                    "darkgoldenrod1",
+                                    "darkorange", "orangered1",
+                                    "firebrick1", "red3", "red4")) +
+  #scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
+  scale_x_continuous(breaks=seq(2010, 2020, 1)) +
+  scale_y_continuous(
+    name = "Proportion with ingested plastic",
+    sec.axis = sec_axis(~rev(.), name = "Minimum size thresold (mm)")) +
+  
+  labs(x = "Publication year",
+       size = "Sample size") +
+  theme_classic(base_size = 16) +
+  theme(
+    # axis.text.x = element_text(angle = 45, hjust = 1),
+    #axis.title.y.left = element_text(color = "red3"),
+    #axis.text.y.left = element_text(color = "red3"),
+    axis.title.y.right = element_text(color = "palegreen4"),
+    axis.text.y.right = element_text(color = "palegreen4"),
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+    legend.position = "none")
+
+Detect_FO_PubYear
+
+dev.copy2pdf(file="FO_and_Min_Size_by_year.pdf", width=6.75, height=6)
+
+
+ # average FO in 2019
 FO_year_2019 <- FO_year_2010 %>% filter(publication_year == 2019)
 weighted.mean(FO_year_2019$prop_w_plastic, w = FO_year_2019$N)
 
@@ -597,7 +614,7 @@ cum_unique <- function(l) {
   result
 }
 d_rarefaction_all <-  d_full %>%
-  filter(method_type == 3) %>%  # Can TOGGLE in and out
+  #filter(method_type == 3) %>%  # Can TOGGLE in and out
   group_by(publication_year) %>% 
   summarize(species = list(unique(binomial)),
             annual_N = sum(N, na.rm = TRUE)) %>% 
@@ -628,16 +645,28 @@ rarefaction_plot <- ggplot() +
                   aes(cum_n, cum_species, label = publication_year), 
                   nudge_x = 1500, nudge_y = -10,
                   segment.color = "black") +
-  labs(x = "Cumulative number of individuals sampled",
+  labs(x = " Cumulative number of individuals sampled",
        y = "Cumuluative number of species sampled") + 
-  theme_classic(base_size = 16)
+  theme_classic(base_size = 16) +
+  theme(plot.margin = unit(c(0.5,0.5,0.5,2), "lines"))
 rarefaction_plot
 
-dev.copy2pdf(file="Supp_rarefaction_plot.pdf", width=6, height=6)
+dev.copy2pdf(file="Rarefaction_plot_R1.pdf", width=8, height=7)
+
+
+Final_fig_comb  <- ggarrange(Detect_FO_PubYear, rarefaction_plot,
+                               labels = c("A","B"), 
+                               font.label = list(size = 16),
+                               legend = "none",
+                               ncol = 2, nrow = 1)
+Final_fig_comb
+
+dev.copy2pdf(file="Final_fig_comb.pdf", width=16, height=7)
+
 
 
 # Figure 2 Extended, number of studies over time----
-study_hist <- d %>% 
+study_hist <- d_R1 %>% 
   group_by(publication_year, includes_microplastic) %>% 
   summarize(n_studies = n_distinct(source)) %>% 
   ggplot(aes(publication_year, n_studies)) + 
@@ -653,10 +682,10 @@ theme(axis.title.x = element_blank())
 study_hist 
 
 
-study_hist_MT <- d %>% 
+study_hist_MT <- d_R1 %>% 
   group_by(publication_year, method_type) %>% 
   summarize(n_studies = n_distinct(source)) %>% 
-  mutate(method_type = factor(method_type)) %>% 
+  mutate(method_type = fct_relevel(method_type, "1", "2")) %>% 
   ggplot(aes(publication_year, n_studies)) + 
   geom_bar(aes(fill = method_type), stat = "identity") + 
   scale_fill_manual(labels = c("1", "2", "3"), 
@@ -671,12 +700,12 @@ study_hist_MT
 
 dev.copy2pdf(file="studies_by_year_MT.pdf", width=12, height=7)
 
-study_hist_AW <- d %>% 
+study_hist_AW <- d_R1 %>% 
   group_by(publication_year, adjacency_water) %>% 
   summarize(n_studies = n_distinct(source)) %>% 
   ggplot(aes(publication_year, n_studies)) + 
   geom_bar(aes(fill = adjacency_water), stat = "identity") + 
-  scale_fill_manual(values = c( "burlywood4", "seagreen4", "dodgerblue4")) +
+  scale_fill_manual(values = c( "seagreen4", "burlywood4", "dodgerblue4")) +
   geom_smooth(se = FALSE, color = "gray25") +
   theme_classic(base_size = 18) +
   labs(fill = "Region",
@@ -1220,6 +1249,132 @@ data <- data %>% filter(Method.type==3)
 
 
 
+#### Old map code ----
+
+# include this line if you're looking for studies that have to include microplastics
+data <- data %>% filter(Includes.microplastic == "Y"|Includes.microplastic == "Y?") 
+
+
+
+# Here we want to get average proportion of plastic per province
+# data of interest is:
+data2 <- data[,c("Binomial", "Oceanographic.province..from.Longhurst.2007.", "Prop.w.plastic", "NwP", "N", "Source")]
+colnames(data2) <- c("Species", "OceanProv", "PropPlastic", "NwP", "N", "Source")
+data3<- data2[order(data2$OceanProv),]
+
+# We need our provinces to match the publicly available shape file, so we are renaming those that don't and then dropping the replaced factor levels
+levels(data3$OceanProv) <- c(levels(data3$OceanProv), "CHIL", "BPLR", "NASE", "NPPF") 
+data3$OceanProv[data3$OceanProv=="BPRL"] <- "BPLR"
+data3$OceanProv[data3$OceanProv=="HUMB"] <- "CHIL"
+data3$OceanProv[data3$OceanProv=="NAST E"] <- "NASE"
+data3$OceanProv[data3$OceanProv=="NPSE"] <- "NPPF"
+
+# some checks to make sure that worked
+table(data3$OceanProv)
+data3$OceanProv <- droplevels(data3$OceanProv)
+levels(data3$OceanProv)
+
+# Here we will use a for-loop to fill in the desired variables (average plastic, number of fish, number of studies, number of species, normalized sample size per province)
+
+#Set up new dataframe to include our desired variables
+prov <- unique(data3$OceanProv)
+prov
+length(prov)
+aveplast <- rep(NA, length(prov))
+numfish <- rep(NA, length(prov))
+numstudies <- rep(NA, length(prov))
+numspecies <- rep(NA, length(prov))
+normalized <- rep(NA, length(prov))
+
+# Now our for-loop
+for (i in 1:length(prov)){
+  sub <- data3[data3$OceanProv==prov[i],]
+  aveplast[i] <- sum(sub$NwP, na.rm=T)/sum(sub$N, na.rm=T)
+  numfish[i] <- sum(sub$N, na.rm=T)
+  numstudies[i] <- length(unique(sub$Source))
+  numspecies[i] <- length(unique(sub$Species))
+  normalized[i] <- aveplast[i]*sum(sub$N, na.rm=T)
+}
+
+# Checking output
+aveplast
+length(aveplast)
+numfish
+table(numfish)
+numstudies
+head(data3)
+numspecies
+
+#Combine all of these variables into a new data frame, which we will build off of to make our map
+newdat <- data.frame(prov, aveplast, numfish, numstudies, numspecies, normalized)
+newdat
+
+# We are going to bin data for easier categorization and comparison:
+# ave plastic
+newdat$aveplastbin <- rep(NA, length(prov))
+newdat$aveplastbin[newdat$aveplast<=.10]= "<.10"
+newdat$aveplastbin[newdat$aveplast >.10 & newdat$aveplast<=20]= ".11-.20"
+newdat$aveplastbin[newdat$aveplast >.20 & newdat$aveplast<=.30]= ".21-.30"
+newdat$aveplastbin[newdat$aveplast >.30 & newdat$aveplast<=.40]= ".31-.40"
+newdat$aveplastbin[newdat$aveplast >.40 & newdat$aveplast<=.50]= ".41-.50"
+newdat$aveplastbin[newdat$aveplast >.50 & newdat$aveplast<=.60]= ".51-.60"
+newdat$aveplastbin[newdat$aveplast >.60 & newdat$aveplast<=.70]= ".61-.70"
+newdat$aveplastbin[newdat$aveplast >.70 & newdat$aveplast<=.80]= ".71-.80"
+newdat$aveplastbin[newdat$aveplast >.80 & newdat$aveplast<=.90]= ".81-.90"
+newdat$aveplastbin[newdat$aveplast >.90 & newdat$aveplast<=.99]= ".91-.99"
+newdat$aveplastbin[newdat$aveplast ==1]= "1"
+
+# number of studies
+summary(newdat$numstudies)
+newdat$numstudiesbin <- rep(NA, length(prov))
+newdat$numstudiesbin[newdat$numstudies == 1] = "1"
+newdat$numstudiesbin[newdat$numstudies >1 & newdat$numstudies<=5]= "2-5"
+newdat$numstudiesbin[newdat$numstudies >5 & newdat$numstudies<=10]= "6-10"
+newdat$numstudiesbin[newdat$numstudies >=10]= ">10"
+
+# number of fish/study
+summary(newdat$numfish)
+newdat$numfishbin <- rep(NA, length(prov))
+newdat$numfishbin[newdat$numfish >=1 & newdat$numfish<10]= "< 10"
+newdat$numfishbin[newdat$numfish >=10 & newdat$numfish<=50]= "10-50"
+newdat$numfishbin[newdat$numfish >50 & newdat$numfish<=100]= "51-100"
+newdat$numfishbin[newdat$numfish >100 & newdat$numfish<500]= "101-500"
+newdat$numfishbin[newdat$numfish >500 & newdat$numfish<=1000]= "501-1000"
+newdat$numfishbin[newdat$numfish >1000 & newdat$numfish<=1500]= "1001-1500"
+newdat$numfishbin[newdat$numfish >1500]= ">1500"
+
+# normalized proportion of ingestion bins
+summary(newdat$normalized)
+newdat$normbin <- rep(NA, length(prov))
+newdat$normbin[newdat$normalized >=1 & newdat$normalized<25]= "< 10"
+newdat$normbin[newdat$normalized >=10 & newdat$normalized<=50]= "10-50"
+newdat$normbin[newdat$normalized >50 & newdat$normalized<=100]= "51-100"
+newdat$normbin[newdat$normalized >100 & newdat$normalized<500]= "101-500"
+newdat$normbin[newdat$normalized >500 & newdat$normalized<=1000]= "501-1000"
+newdat$normbin[newdat$normalized >1000 & newdat$normalized<=1500]= "1001-1500"
+newdat$normbin[newdat$normalized >1500]= ">1500"
+
+
+# Add a column with labels so that we can just use these for Figures 2, S2-S3 when we create it in GIS
+newdat$labels <- paste(newdat$prov, " (n=",newdat$numfish,")", sep = "")
+
+# Write the data into a .csv file with all of the organized, binned variables.
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_updated.csv") #(Map w/ all data; Fig S2A)
+
+# if have run this 
+#write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_wMP.csv") #(Map w/ Microplastics only; Fig 2)
+write.csv(newdat, "Longhurst_FishSummaryData_fullbinned_M3.csv") #(Map w/ Method 3 only; Fig S2B)
+
+#### To bring this file into QGIS for mapping:
+# 1. Import as a vector layer;
+# 2. Join this layer by province code with the shape file for the Longhurst provinces that can be downloaded from here: http://www.marineregions.org/downloads.php#longhurst.
+# 3. Adjust colors, labels, and variables using the "Properties" menu in QGIS.
+
+# Figure 2 was made by color-coding the Longhurst province shape file according to the "aveplastbin" column from the microplastic only data. The labels were assigned from the "labels" column. 
+
+#Figure S2 was made from a) the full dataset, and b) by subsetting the data to studies that used method 3. The labels were assigned from the "labels" column. 
+
+#Figure S3 was made by color coding from the full data set according to the "numstudiesbin" column.
 
 
 

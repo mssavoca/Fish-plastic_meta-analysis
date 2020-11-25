@@ -2,9 +2,6 @@
 
 library(tidyverse)
 library(ggpubr)
-remove.packages("rgl")
-library(rgl)
-library(plotly)
 
 
 
@@ -48,11 +45,28 @@ d_R1 = read_csv("Plastics ingestion records fish master_final_GCB_v2.csv") %>%
       capture_purpose %in% c("Aquaculture", "plastic study, aquaculture") ~ "aquaculture", 
       capture_purpose %in% c("artisanal fishing", "recreational fishing", "artisanal fishing, fish market", "plastic study, artisanal fishery") ~ "small scale fishing",
       capture_purpose %in% c( "bycatch", "incidental") ~ "bycatch",
-      capture_purpose %in% c("plastic study (not listed)", "plastic study (not listed)", "plastic study", "plastic study, commercial fishing", "plastic study, fish market", "plastic study, commercial fishing, recreational fishing") ~ "plastic study")
+      capture_purpose %in% c("plastic study (not listed)", "plastic study (not listed)", "plastic study", "plastic study, commercial fishing", "plastic study, fish market", "plastic study, commercial fishing, recreational fishing") ~ "plastic study"),
+    
+    brk_pt_MD = ifelse(publication_year >= 2017, "after", "before")
     )
          
 
 d_R1 %>% summarise(n_studies = n_distinct(source))
+
+
+
+# Expanded dataframe that accounts for sample size with rows----
+df_ELH_bp <- d_full_wo_gaps_PF %>% 
+  drop_na(N) %>% 
+  map_df(., rep, .$N)
+
+
+PF_EcoMod_bp <- ggplot(df_ELH_bp,
+                       aes(x = brk_pt_MD, y = prop_w_plastic)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(position=position_jitter(height=0.2, width=0.25), alpha = 0.02)
+PF_EcoMod_bp
+
 
 
 #database for all data where microplastics were quantified; 0 = no, 1 = yes
@@ -213,7 +227,7 @@ bp_reportmin
 
 
 
-# combined binomial plots----
+# Combined binomial plots----
 
 
 BP_Fig_full <- ggarrange(bp_polyconf, bp_blanks, 
@@ -232,10 +246,18 @@ BP_Fig_full
 bp_all <- ggplot(filter(d_full_R1_by_study, Publication_year >2009)) +
   
   
+  # stat_smooth(aes(Publication_year, Method_3),
+  #             color = "aquamarine3",
+  #             method="glm", method.args=list(family="binomial"),formula=y~x,
+  #             alpha=0.2, size=1) +
+  # geom_point(aes(Publication_year, Method_3),
+  #            position=position_jitter(height=0.05, width=0.05),
+  #            color = "aquamarine3", alpha = 0.2) +
+  
   stat_smooth(aes(Publication_year, Min_size),
               color = "black",
               method="glm", method.args=list(family="binomial"),formula=y~x,
-              alpha=0.1, size=1) +
+              alpha=0.2, size=1) +
   geom_point(aes(Publication_year, Min_size),
              position=position_jitter(height=0.05, width=0.05), 
              color = "black", alpha = 0.2) +
@@ -248,31 +270,36 @@ bp_all <- ggplot(filter(d_full_R1_by_study, Publication_year >2009)) +
              color  = "dodgerblue3", alpha = 0.2) +
   
   stat_smooth(aes(Publication_year, Blanks_used),
-              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              method="glm", method.args=list(family="binomial"),formula=y~x,
               color = "firebrick2",alpha=0.2, size=1) +
   geom_point(aes(Publication_year, Blanks_used),
              position=position_jitter(height=0.05, width=0.05),
              color  = "firebrick2", alpha = 0.2) +
-  
+
   stat_smooth(aes(Publication_year, Polymer_confirmation),
-              method="glm", method.args=list(family="binomial"),formula=y~x, 
+              method="glm", method.args=list(family="binomial"),formula=y~x,
               color = "chocolate2",alpha=0.2, size=1) +
   geom_point(aes(Publication_year, Polymer_confirmation),
              position=position_jitter(height=0.05, width=0.05),
              color  = "chocolate2", alpha = 0.2) +
   
-  geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  #geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
   
   labs(x = "Publication year",
-       y = "Pr(Quality metrics)") +
+       y = "Quality assurance \nmetrics described") +
   scale_x_continuous(breaks = 2010:2020) +
-  theme_minimal(base_size = 14)
+  scale_y_continuous(breaks = c(0,1), labels = c("No","Yes")) +
+  theme_classic(base_size = 14) 
 bp_all
 
 
 
+# color palette for figures
+pal <- c("Min_size" = "black", "Clean_lab" = "dodgerblue3", "Blanks_used" = "firebrick2",  "Polymer_confirmation" = "chocolate2")
+
+
 bp_all_long <- d_full_R1_by_study %>% 
-  filter(Publication_year >2009) %>%  #can toggle in and out
+ filter(Publication_year >2009) %>%  #can toggle in and out
   pivot_longer(cols = Polymer_confirmation:Min_size, names_to = "Metric_type", values_to = "Metric_value") %>% 
 
   ggplot() + 
@@ -284,34 +311,64 @@ bp_all_long <- d_full_R1_by_study %>%
              position=position_jitter(height=0.05, width=0.05),
              alpha = 0.2) +
   
-  geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  #geom_vline(xintercept = 2015, color = "gray40", linetype = "dashed") +
+  
+  scale_color_manual(values = pal, labels = c("Blanks \nused", 
+                                              "Clean lab methods \ndescribed", 
+                                              "Minimum size \nthreshold reported", 
+                                              "Polymer \nconfirmation")) +
   
   labs(x = "Publication year",
-       y = "Pr(reporting QA/QC metrics)") +
+       y = "Quality assurance \nmetrics described",
+       color = "Quality assurance \nmetric") +
   scale_x_continuous(breaks = 2010:2020) +
-  theme_minimal(base_size = 14)
+  scale_y_continuous(breaks = c(0,1), labels = c("No","Yes")) +
+  theme_classic(base_size = 12) +
+  theme(legend.spacing.y = unit(0.25, 'cm'),
+        legend.key.size = unit(0.75, "cm"),
+        legend.position = "top",
+        legend.text = element_text(size = 7),
+        legend.title = element_text(size = 8))
 
 bp_all_long
+
+dev.copy2pdf(file="Quality_assurance_plot.pdf", width=5.25, height=4)
 
 
 #plot of minimum size of plastic----
 
-Detect_FO <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
-              aes(Smallest_detect_size, Overall_FO,
-                  weight = N, size= N)) +
-  scale_x_reverse() +
-  geom_point(aes(color = as.factor(Publication_year)), alpha = 0.5) +
-  geom_smooth(method="gam", formula = y ~s(x), se = F) +
-  geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
+Detect_FO <- d_full_R1_by_study %>% 
+  mutate(Publication_year = as_factor(Publication_year)) %>% 
+  ggplot() +
+  geom_point(
+    aes(Smallest_detect_size, Overall_FO,
+                     weight = N, size= N, color = Publication_year), 
+    alpha = 0.5) +
+  scale_colour_viridis_d(option = "viridis") +
+
+  geom_smooth(data = filter(d_full_R1_by_study, Smallest_detect_size > 0.15),
+              aes(Smallest_detect_size, Overall_FO, weight = N, size= N),
+              method = "lm") +
+
+  geom_smooth(data = filter(d_full_R1_by_study, Smallest_detect_size < 0.25),
+              aes(Smallest_detect_size, Overall_FO, weight = N, size= N),
+              formula = y ~ x + I(x^2),
+              level = 0.90,
+              method = "lm") +
+  
+  # geom_smooth(data = d_full_R1_by_study,
+  #             aes(Smallest_detect_size, Overall_FO),
+  #   method="gam", formula = y ~ x + I(x^2), se = F) +
+  # geom_hline(yintercept = 0.26, linetype="dashed", color = "grey50") +
   # scale_color_gradientn(colours = c("steelblue4",
   #                                   "darkgoldenrod1",
   #                                   "darkorange", "orangered1",
   #                                   "firebrick1", "red3", "red4")) +
   scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
   scale_x_reverse(breaks=seq(0, 1, 0.05), limits = c(1, 0)) +
-  geom_vline(xintercept = 0.1, linetype = "dashed", color = "grey50") +
+  geom_vline(xintercept = 0.2, linetype = "dashed", color = "black") +
   #scale_shape_manual(na.translate = F, values = shapes) +
-  ylim(0, 1) +
+  ylim(-0.1, 1) +
   labs(x = "Smallest size detected (mm)",
        y = "Proportion with ingested plastic",
        size = "Sample size") +
@@ -321,6 +378,7 @@ Detect_FO <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
         legend.text = element_text(size = 10))
 Detect_FO
 
+dev.copy2pdf(file="FO_by_min_size.pdf", width=7.5, height=5)
 
 
 
@@ -329,7 +387,7 @@ Detect_PubYear <- ggplot(filter(d_full_R1_by_study, Publication_year >2009),
                              weight = N, size= N)) +
   scale_x_reverse() +
   geom_point() +
-  geom_smooth() +
+  geom_smooth(method = "lm") +
 
   scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
   scale_x_continuous(breaks=seq(2010, 2020, 1)) +
@@ -349,44 +407,53 @@ Detect_PubYear
 
 
 
-#Trying two y-axes plot
+# Two y-axes plot ----
 
 d_full_R1_tap <- d_full_R1 %>% 
   mutate(smallest_detection_size_limits_mm = rev(smallest_detection_size_limits_mm))
 
 
-Detect_FO_PubYear <- ggplot(data = filter(d_full_R1, publication_year >2009),
-                            aes(size = N, weight = N)) +
-  scale_x_reverse() +
-  geom_point(aes(publication_year, prop_w_plastic), alpha = 0.3)+
-  geom_smooth(aes(publication_year, prop_w_plastic),
-              method = "lm", color = "red") +
+Detect_FO_PubYear <- ggplot() +
+
+  geom_point(data = filter(d_full_R1, publication_year >2009),
+             aes(publication_year, prop_w_plastic, 
+             alpha = 0.2, size = N, weight = N), color = "indianred1") +
+  geom_smooth(data = filter(d_full_R1, publication_year >2009),
+              aes(publication_year, prop_w_plastic,
+                  size = N, weight = N),
+              method = "lm", color = "red3") +
   
-  geom_point(aes(publication_year, 1-smallest_detection_size_limits_mm), alpha = 0.2) +
-  geom_smooth(aes(publication_year, 1-smallest_detection_size_limits_mm),
+  geom_point(data = filter(d_full_R1_by_study, Publication_year >2009),
+             aes(Publication_year, 1-Smallest_detect_size), 
+             alpha = 0.5, shape = 18, color = "blue") +
+  geom_smooth(data = filter(d_full_R1_by_study, Publication_year >2009),
+              aes(Publication_year, 1-Smallest_detect_size),
               method = "lm", color = "blue") +
-  #scale_y_reverse() + 
   
   #scale_size_continuous(breaks = c(1, 10, 100, 500, 1000)) +
   scale_x_continuous(breaks=seq(2010, 2020, 1)) +
   scale_y_continuous(
     name = "Proportion with ingested plastic",
-    sec.axis = sec_axis(~rev(.), name = "Smallest size detected (mm)")) +
+    sec.axis = sec_axis(~rev(.), name = "Minimum size thresold (mm)")) +
   
   labs(x = "Publication year",
        size = "Sample size") +
   theme_classic(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        axis.title.y.left = element_text(color = "red"),
+  theme(
+   # axis.text.x = element_text(angle = 45, hjust = 1),
+        axis.title.y.left = element_text(color = "red3"),
+        axis.text.y.left = element_text(color = "red3"),
         axis.title.y.right = element_text(color = "blue"),
+        axis.text.y.right = element_text(color = "blue"),
         legend.title = element_text(size = 12),
-        legend.text = element_text(size = 10))
+        legend.text = element_text(size = 10),
+        legend.position = "none")
 Detect_FO_PubYear
 
 
-dev.copy2pdf(file="Detect_FO_PubYear_tot.pdf", width=10, height=6)
+dev.copy2pdf(file="Detect_FO_PubYear_tap.pdf", width=7, height=5)
 
-# Trying 3D plot ----
+ # Trying 3D plot ----
 Try_3D <- plot_ly(
   x = d_full_R1_by_study$Publication_year, 
   y = d_full_R1_by_study$Overall_FO, 
