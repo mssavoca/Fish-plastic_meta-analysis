@@ -186,7 +186,7 @@ d_sp_sum <- d_R1 %>%
                                    Minor = c("minor commercial", "subsistence"),
                                    None = "none")) %>%
   # filter(num_sp > 2) %>% 
-  #filter(Sample_size >10, Sp_mean >= 0.25) %>%
+  filter(Sample_size >10, Sp_mean < 0.25) %>%
   #filter(commercial == "Commercial") %>%
   arrange(-Sp_mean)
 
@@ -471,7 +471,7 @@ FO_year_2010 <- d_full_R1 %>%
 
 
 glmm_FwP_pub_year_R1 <- glmer(cbind(NwP, N-NwP) ~ scale(publication_year) +
-                                (1|brk_pt_MD) + (1|overall_reliability)  + (1|order) + (1|method_type), #overall_reliability publication_year
+                                (1|brk_pt_MD) + (1|overall_reliability)  + (1|order) + (1|method_type), 
                            na.action = "na.fail",
                            data = FO_year_2010, family = binomial)
 summary(glmm_FwP_pub_year_R1)
