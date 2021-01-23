@@ -139,6 +139,10 @@ d_full_R1 <- d_R1 %>%
          min_size_YN = ifelse(is.na(smallest_detection_size_limits_mm), 0,1),
          overall_reliability = poly_conf_YN + blanks_used_YN + clean_lab_YN + min_size_YN)
 
+# total number of refs that examine microplastic
+n_distinct(d_full_R1$source)
+
+#Grouping by study
 d_full_R1_by_study <- d_full_R1 %>% 
   group_by(source) %>% 
   summarise(Overall_FO = sum(NwP, na.rm = TRUE)/sum(N, na.rm = TRUE),
